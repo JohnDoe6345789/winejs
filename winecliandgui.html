@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Hybrid WineJS</title>
+<style>
+  body { font-family: monospace; }
+  #consoleOutput { border: 1px solid #333; padding: 5px; height: 100px; overflow-y: auto; white-space: pre-wrap; margin-bottom:10px;}
+  #canvasContainer { position: relative; border: 1px solid #333; height:400px; }
+  canvas { position: absolute; }
+</style>
+</head>
+<body>
+<h1>Hybrid WineJS</h1>
+<input type="file" id="exeFile">
+<div id="consoleOutput"></div>
+<div id="canvasContainer"></div>
+
+<script>
+class WineJS {
+  constructor(consoleEl, guiContainer) {
+    this.consoleEl = consoleEl;
+    this.guiContainer = guiContainer;
+    this.apiHooks = {};
+    this.modules = {};
+    this.windows = {};
+    this.nextHwnd = 1;
+    this.messageQueue = [];
+  }
+
+  // --- API Hooks ---
+  registerAPI(name, fn) { this.apiHooks[name.toLowerCase()] = fn; }
+  callAPI(name, ...args) {
+    const fn = this.apiHooks[name.toLowerCase()];
+    if(fn) return fn(...args);
+    this.log(`[WineJS] API ${name} not implemented`);
+  }
+
+  log(text) { this.consoleEl.textContent += text + '\n'; this.consoleEl.scrollTop = this.consoleEl.scrollHeight; }
+
+  // --- Load Binary ---
+  async loadBinary(file) {
+    return new Promise((resolve,reject)=>{
+      const reader = new FileReader();
+      reader.onload = ()=>{
+        const buffer = new Uint8Array(reader.result);
+        this.modules[file.name] = buffer;
+        resolve(buffer);
+      };
+      reader.onerror = reject;
+      reader.readAsArrayBuffer(file);
+    });
+  }
+
+  // --- String extraction for CLI EXEs ---
+  extractStrings(buffer){
+    const strings=[]; let current=[];
+    for(let i=0;i<buffer.length;i++){
+      const byte=buffer[i];
+      if((byte>=32 && byte<=126)||byte===10||byte===13){current.push(String.fromCharCode(byte));}
+      else { if(current.length>=1) strings.push(current.join('')); current=[]; }
+    }
+    if(current.length) strings.push(current.join(''));
+    return strings;
+  }
+
+  // --- Fake GUI API ---
+  CreateWindowEx(x,y,width,height,title){
+    const hwnd=this.nextHwnd++;
+    const canvas=document.createElement('canvas');
+    canvas.width=width; canvas.height=height;
+    canvas.style.left=x+'px'; canvas.style.top=y+'px';
+    canvas.style.border='2px solid #000';
+    this.guiContainer.appendChild(canvas);
+    const ctx=canvas.getContext('2d');
+    this.windows[hwnd]={canvas,ctx,width,height,title};
+    return hwnd;
+  }
+
+  ShowWindow(hwnd){ this.PumpMessage(hwnd,'WM_PAINT'); }
+  PumpMessage(hwnd,msg){ this.messageQueue.push({hwnd,msg}); this.ProcessMessages(); }
+  ProcessMessages(){
+    while(this.messageQueue.length){
+      const {hwnd,msg}=this.messageQueue.shift();
+      const win=this.windows[hwnd]; if(!win) continue;
+      if(msg==='WM_PAINT'){
+        const ctx=win.ctx;
+        ctx.fillStyle='#fff'; ctx.fillRect(0,0,win.width,win.height);
+        ctx.fillStyle='#0078d7'; ctx.fillRect(0,0,win.width,30);
+        ctx.fillStyle='#fff'; ctx.font='16px sans-serif'; ctx.fillText(win.title,5,20);
+        ctx.strokeStyle='#000'; ctx.strokeRect(0,0,win.width,win.height);
+      }
+    }
+  }
+
+  // --- Run binary ---
+  run(file){
+    const buffer=this.modules[file.name];
+    if(!buffer) return this.log('[WineJS] No binary loaded');
+    // Decide CLI or GUI (naive check: look for "GUI" string)
+    const strings=this.extractStrings(buffer);
+    const isGUI=strings.some(s=>/window/i.test(s));
+    if(isGUI){
+      const hwnd=this.CreateWindowEx(50,50,400,300,'Fake GUI Window');
+      this.ShowWindow(hwnd);
+    } else {
+      strings.forEach(s=>{ if(s.trim()) this.callAPI('WriteConsole', s); });
+    }
+  }
+}
+
+// --- Initialize ---
+const consoleEl=document.getElementById('consoleOutput');
+const guiContainer=document.getElementById('canvasContainer');
+const wine=new WineJS(consoleEl,guiContainer);
+
+// --- Register WriteConsole ---
+wine.registerAPI('WriteConsole',text=>{
+  text.split(/\r?\n/).forEach(line=>{ if(line.trim()) wine.log(`[WineJS] ${line}`); });
+});
+
+// --- File input ---
+document.getElementById('exeFile').addEventListener('change',async e=>{
+  const file=e.target.files[0]; if(!file) return;
+  await wine.loadBinary(file);
+  wine.run(file);
+});
+
+</script>
+</body>
+</html>
