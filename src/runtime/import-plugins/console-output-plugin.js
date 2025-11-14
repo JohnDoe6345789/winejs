@@ -1,4 +1,10 @@
-export function createConsoleOutputImportPlugin() {
+export function createConsoleOutputImportPlugin({
+  logMessageBoxes = true,
+  guiKeywords = ['createwindow', 'dialogbox', 'registerclass'],
+} = {}) {
+  const normalizedKeywords = guiKeywords
+    ?.map((keyword) => keyword?.toLowerCase?.())
+    .filter((keyword) => Boolean(keyword?.length)) ?? ['createwindow', 'dialogbox', 'registerclass'];
   return {
     id: 'console-output',
     match: () => true,
@@ -23,11 +29,13 @@ export function createConsoleOutputImportPlugin() {
       if (lower.includes('messagebox')) {
         flagGui?.();
         const textPtr = cpu.readRegister('rdx');
-        const text = readWideString(cpu, textPtr, 256);
-        if (text) log?.(`[WineJS] MessageBox payload: ${text}`);
+        if (logMessageBoxes) {
+          const text = readWideString(cpu, textPtr, 256);
+          if (text) log?.(`[WineJS] MessageBox payload: ${text}`);
+        }
         return { rax: 1 };
       }
-      if (lower.includes('createwindow') || lower.includes('dialogbox') || lower.includes('registerclass')) {
+      if (normalizedKeywords.some((keyword) => lower.includes(keyword))) {
         flagGui?.();
         return { rax: 1 };
       }

@@ -16,8 +16,14 @@ function getSocketHandle(cpu, register = 'rcx') {
   return Number(value);
 }
 
-export function createWinsockWebSocketImportPlugin({ getWinsockBridge, log } = {}) {
-  const logger = log ?? (() => {});
+export function createWinsockWebSocketImportPlugin({
+  getWinsockBridge,
+  log,
+  logTraffic = false,
+  autoConnect = true,
+} = {}) {
+  const errorLogger = log ?? (() => {});
+  const trafficLogger = logTraffic ? errorLogger : () => {};
   const resolveBridge = () => getWinsockBridge?.();
 
   function ensureBridge() {
@@ -41,12 +47,16 @@ export function createWinsockWebSocketImportPlugin({ getWinsockBridge, log } = {
     const raw = cpu.memory.read(sockaddrPtr, Math.max(16, nameLength));
     const target = parseIPv4Sockaddr(raw);
     if (!target) {
-      logger?.('[WineJS] Unable to parse winsock sockaddr, ignoring connect.');
+      trafficLogger?.('[WineJS] Unable to parse winsock sockaddr, ignoring connect.');
+      return { rax: 0 };
+    }
+    if (!autoConnect) {
+      trafficLogger?.(`[WineJS] Auto-connect disabled. Skipping socket ${socketHandle} → ${target.host}:${target.port}`);
       return { rax: 0 };
     }
     bridge
       .openConnection({ connectionId: socketHandle, ...target })
-      .catch((err) => logger?.(`[WineJS] Winsock connect failed: ${err?.message ?? err}`));
+      .catch((err) => errorLogger?.(`[WineJS] Winsock connect failed: ${err?.message ?? err}`));
     return { rax: 0 };
   }
 
@@ -61,7 +71,7 @@ export function createWinsockWebSocketImportPlugin({ getWinsockBridge, log } = {
     const bytes = cpu.memory.read(bufferPtr, length);
     bridge
       .send(socketHandle, bytes)
-      .catch((err) => logger?.(`[WineJS] Winsock send failed: ${err?.message ?? err}`));
+      .catch((err) => errorLogger?.(`[WineJS] Winsock send failed: ${err?.message ?? err}`));
     return { rax: length };
   }
 
@@ -85,7 +95,9 @@ export function createWinsockWebSocketImportPlugin({ getWinsockBridge, log } = {
     const bridge = ensureBridge();
     if (!bridge) return { rax: 0 };
     const socketHandle = getSocketHandle(context.cpu);
-    bridge.close(socketHandle).catch((err) => logger?.(`[WineJS] Winsock close failed: ${err?.message ?? err}`));
+    bridge
+      .close(socketHandle)
+      .catch((err) => errorLogger?.(`[WineJS] Winsock close failed: ${err?.message ?? err}`));
     return { rax: 0 };
   }
 

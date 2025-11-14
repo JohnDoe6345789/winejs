@@ -6,7 +6,9 @@
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
-    "dev": "http-server . -p 4173 -c-1",
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
     "backend": "node scripts/backend-server.js",
     "cy:open": "cypress open",
     "cy:run": "cypress run"
@@ -24,12 +26,22 @@
   },
   "homepage": "https://github.com/JohnDoe6345789/winejs#readme",
   "devDependencies": {
+    "@vitejs/plugin-react": "^5.0.4",
     "cypress": "^15.6.0",
-    "http-server": "^14.1.1",
     "jsdom": "^27.2.0",
+    "vite": "^5.2.0",
     "vitest": "^4.0.8"
   },
   "dependencies": {
+    "@emotion/react": "^11.11.4",
+    "@emotion/styled": "^11.11.5",
+    "@mui/icons-material": "^5.15.20",
+    "@mui/material": "^5.15.20",
+    "@mui/system": "^5.15.20",
+    "@mui/utils": "^5.15.20",
+    "@fontsource/space-grotesk": "^5.0.20",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
     "ws": "^8.18.3"
   }
 }

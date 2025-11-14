@@ -1,86 +1,13 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>WineJS Unified Demo</title>
-  <link rel="stylesheet" href="index.css">
-</head>
-<body>
-  <main class="app">
-    <header class="app__header">
-      <div>
-        <h1>WineJS Unified Demo</h1>
-        <p class="tagline">Blend the printable console strings with the faux GUI canvas to inspect your Win32 binaries in one place.</p>
-      </div>
-      <label class="fileInput">
-        <span>Select a Windows executable</span>
-        <input type="file" id="exeFile" accept=".exe">
-      </label>
-    </header>
-
-    <div id="statusBar" class="status" role="status" aria-live="polite">
-      Load a `.exe` to extract strings or paint a mock window.
-    </div>
-
-    <section class="panelGrid">
-      <article class="panel">
-        <div class="panel__title">Console Output</div>
-        <div id="consoleOutput" class="panel__body terminal" role="log" aria-live="polite"></div>
-      </article>
-
-      <article class="panel">
-        <div class="panel__title">Extracted Strings</div>
-        <div id="stringList" class="panel__body stringList"></div>
-      </article>
-
-      <article class="panel panel--wide">
-        <div class="panel__title">GUI Canvas Sandbox</div>
-        <div id="canvasContainer" class="panel__body canvasContainer"></div>
-      </article>
-
-      <article class="panel panel--wide">
-        <div class="panel__title">Backend &amp; Storage Controls</div>
-        <div class="panel__body backendPanel">
-          <form id="backendConfig" class="backendPanel__form">
-            <label>
-              <span>Backend WebSocket URL</span>
-              <input type="url" id="backendUrl" value="ws://localhost:8089" required>
-            </label>
-            <div class="backendPanel__actions">
-              <button type="submit">Connect</button>
-              <button type="button" id="disconnectBackend">Disconnect</button>
-            </div>
-          </form>
-
-          <div id="backendStatusText" class="backendStatusText">Backend disconnected.</div>
-
-          <div class="backendGrid">
-            <label>
-              <span>Block Size (bytes)</span>
-              <input type="number" id="blockSizeInput" min="512" step="512" value="4096">
-            </label>
-            <label>
-              <span>Block Count</span>
-              <input type="number" id="blockCountInput" min="8" step="8" value="2048">
-            </label>
-            <label>
-              <span>Filesystem Label</span>
-              <input type="text" id="filesystemLabel" maxlength="32" value="WineJS">
-            </label>
-          </div>
-
-          <div class="backendActions">
-            <button type="button" id="formatBlockDevice">Format Block Device</button>
-            <button type="button" id="createFilesystemButton">Create Filesystem</button>
-          </div>
-
-          <div id="backendLog" class="backendLog" role="log" aria-live="polite"></div>
-        </div>
-      </article>
-    </section>
-  </main>
-
-  <script type="module" src="emulator.js"></script>
-  <script type="module" src="index.js"></script>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/wine-logo.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>WineJS Runtime Studio</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
 </html>

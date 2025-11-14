@@ -180,8 +180,11 @@ export class DirectXWebGLRenderer {
 export function createDirectXWebGLPlugin({
   detectDirectX = detectDirectXImports,
   rendererFactory,
+  contextAttributes,
 } = {}) {
-  const createRenderer = rendererFactory ?? ((params) => new DirectXWebGLRenderer(params));
+  const createRenderer =
+    rendererFactory ??
+    ((params) => new DirectXWebGLRenderer({ ...params, contextAttributes }));
   const renderers = new Map();
 
   function disposeRenderers() {
