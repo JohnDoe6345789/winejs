@@ -46,7 +46,13 @@ function FieldControl({ sectionType, pluginId, field, value, onChange }) {
 
 function SettingsPanel({ pluginState, onTogglePlugin, onSettingChange }) {
   return (
-    <Card variant="outlined" sx={{ backgroundColor: 'rgba(6,8,20,0.8)', borderColor: 'rgba(255,255,255,0.08)' }}>
+    <Card
+      variant="outlined"
+      sx={(theme) => ({
+        backgroundColor: theme.custom?.cardBackground ?? theme.palette.background.paper,
+        borderColor: theme.custom?.cardBorder ?? theme.palette.divider,
+      })}
+    >
       <CardHeader
         title="Plugin & Import Settings"
         subheader="Wire runtime, import, and simulator plugins on the fly."
@@ -64,7 +70,15 @@ function SettingsPanel({ pluginState, onTogglePlugin, onSettingChange }) {
                   const pluginConfig = pluginState?.[section.type]?.[plugin.id] ?? {};
                   const enabled = Boolean(pluginConfig.enabled);
                   return (
-                    <Box key={plugin.id} sx={{ p: 2, borderRadius: 2, border: '1px solid rgba(255,255,255,0.06)' }}>
+                    <Box
+                      key={plugin.id}
+                      sx={(theme) => ({
+                        p: 2,
+                        borderRadius: 2,
+                        border: `1px solid ${theme.custom?.listItemBorder ?? theme.palette.divider}`,
+                        backgroundColor: theme.custom?.listItemBackground ?? theme.palette.background.paper,
+                      })}
+                    >
                       <Stack
                         direction={{ xs: 'column', sm: 'row' }}
                         justifyContent="space-between"

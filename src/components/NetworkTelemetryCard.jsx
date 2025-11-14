@@ -21,7 +21,13 @@ function NetworkTelemetryCard({ networkEvents, networkMetrics }) {
   };
 
   return (
-    <Card variant="outlined" sx={{ borderColor: 'rgba(255,255,255,0.08)' }}>
+    <Card
+      variant="outlined"
+      sx={(theme) => ({
+        borderColor: theme.custom?.cardBorder ?? theme.palette.divider,
+        backgroundColor: theme.custom?.cardBackground ?? theme.palette.background.paper,
+      })}
+    >
       <CardHeader
         avatar={<NetworkCheckIcon color="secondary" />}
         title="Network Telemetry"

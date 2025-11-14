@@ -4,7 +4,13 @@ import { formatFileSize, formatTimestamp } from '../utils/formatters.js';
 
 function TaskManagerCard({ tasks, onCloseTask }) {
   return (
-    <Card variant="outlined" sx={{ borderColor: 'rgba(255,255,255,0.08)' }}>
+    <Card
+      variant="outlined"
+      sx={(theme) => ({
+        borderColor: theme.custom?.cardBorder ?? theme.palette.divider,
+        backgroundColor: theme.custom?.cardBackground ?? theme.palette.background.paper,
+      })}
+    >
       <CardHeader
         avatar={<MemoryIcon color="primary" />}
         title="Task Manager"
@@ -16,7 +22,14 @@ function TaskManagerCard({ tasks, onCloseTask }) {
             {tasks.map((task) => {
               const chipColor = task.status === 'Failed' ? 'error' : task.status === 'Analyzing' ? 'warning' : 'success';
               return (
-                <Box key={task.id} sx={{ p: 1.5, border: '1px solid rgba(255,255,255,0.08)', borderRadius: 2 }}>
+                <Box
+                  key={task.id}
+                  sx={(theme) => ({
+                    p: 1.5,
+                    border: `1px solid ${theme.custom?.cardBorder ?? theme.palette.divider}`,
+                    borderRadius: 2,
+                  })}
+                >
                   <Stack
                     direction={{ xs: 'column', sm: 'row' }}
                     justifyContent="space-between"

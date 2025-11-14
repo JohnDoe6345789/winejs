@@ -1,5 +1,6 @@
 import * as React from 'react';
-import { ThemeProvider, CssBaseline, AppBar, Toolbar, Typography, Container, Box, Stack, Grid } from '@mui/material';
+import { ThemeProvider, CssBaseline, GlobalStyles, AppBar, Toolbar, Typography, Container, Box, Stack, Grid } from '@mui/material';
+import { alpha } from '@mui/material/styles';
 import LogoIcon from './components/LogoIcon.jsx';
 import SettingsPanel from './components/SettingsPanel.jsx';
 import StatusCard from './components/StatusCard.jsx';
@@ -9,7 +10,8 @@ import TaskManagerCard from './components/TaskManagerCard.jsx';
 import NetworkTelemetryCard from './components/NetworkTelemetryCard.jsx';
 import DiskActivityCard from './components/DiskActivityCard.jsx';
 import RuntimeOutputs from './components/RuntimeOutputs.jsx';
-import theme from './theme.js';
+import ThemeMenu from './components/ThemeMenu.jsx';
+import { themeRegistry, defaultThemeName, getTheme } from './theme.js';
 import { usePluginManager } from './hooks/usePluginManager.js';
 import { useWineRuntime } from './hooks/useWineRuntime.js';
 import { useWinsockTelemetry } from './hooks/useWinsockTelemetry.js';
@@ -70,23 +72,130 @@ function App() {
   useWinsockTelemetry({ wine, onBackendLog: appendBackendLog, onNetworkEvent: appendNetworkEvent });
   useDiskTelemetry({ wine, onDiskEvent: appendDiskEvent });
 
+  const [selectedTheme, setSelectedTheme] = React.useState(defaultThemeName);
+  const theme = React.useMemo(() => getTheme(selectedTheme), [selectedTheme]);
+
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <Box sx={{ minHeight: '100vh', background: 'radial-gradient(circle at 20% 20%, rgba(10,12,30,1), #02040a 70%)', pb: 6 }}>
+      <GlobalStyles
+        styles={(theme) => {
+          const borderColor = theme.custom?.cardBorder ?? theme.palette.divider;
+          const subtleBorder = theme.custom?.listItemBorder ?? alpha(borderColor, 0.5);
+          const listBg = theme.custom?.listBackground ?? alpha(theme.palette.background.paper, theme.palette.mode === 'light' ? 0.9 : 0.2);
+          const listItemBg =
+            theme.custom?.listItemBackground ?? alpha(theme.palette.primary.main, theme.palette.mode === 'light' ? 0.08 : 0.12);
+          return {
+            ':root': {
+              colorScheme: theme.palette.mode,
+            },
+            body: {
+              backgroundColor: theme.palette.background.default,
+              color: theme.palette.text.primary,
+            },
+            '#root': {
+              minHeight: '100vh',
+            },
+            '.terminal': {
+              width: '100%',
+              minHeight: 240,
+              maxHeight: 420,
+              overflowY: 'auto',
+              padding: 16,
+              borderRadius: 12,
+              border: `1px solid ${borderColor}`,
+              background: theme.custom?.terminalBackground ?? alpha(theme.palette.background.paper, 0.85),
+              fontFamily: `'JetBrains Mono', 'Space Grotesk', 'SFMono-Regular', Consolas, Menlo, monospace`,
+              fontSize: '0.85rem',
+              whiteSpace: 'pre-wrap',
+            },
+            '.stringList': {
+              minHeight: 240,
+              maxHeight: 420,
+              overflowY: 'auto',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 8,
+            },
+            '.stringList__item': {
+              padding: '10px 12px',
+              borderRadius: 10,
+              background: listItemBg,
+              border: `1px solid ${subtleBorder}`,
+              display: 'flex',
+              gap: 10,
+              alignItems: 'center',
+              fontSize: '0.9rem',
+            },
+            '.stringList__item strong': {
+              color: theme.palette.primary.main,
+              fontWeight: 600,
+            },
+            '.canvasContainer': {
+              minHeight: 360,
+              borderRadius: 16,
+              border: `1px dashed ${theme.custom?.cardBorder ?? theme.palette.divider}`,
+              background: theme.custom?.canvasBackground ?? alpha(theme.palette.background.paper, 0.6),
+              position: 'relative',
+              overflow: 'hidden',
+            },
+            '.canvasContainer canvas': {
+              position: 'absolute',
+              border: `2px solid ${theme.custom?.canvasBorder ?? theme.palette.primary.main}`,
+              borderRadius: 8,
+              background: theme.custom?.canvasSurface ?? theme.palette.background.paper,
+              boxShadow: `0 12px 40px ${theme.custom?.canvasGlow ?? alpha(theme.palette.common.black, 0.4)}`,
+            },
+            ".canvasContainer canvas[data-directx-bridge='webgl']": {
+              borderColor: theme.palette.secondary.main,
+              boxShadow: `0 0 32px ${alpha(theme.palette.secondary.main, 0.5)}`,
+            },
+            '.telemetryList': {
+              maxHeight: 260,
+              overflowY: 'auto',
+              padding: 8,
+              borderRadius: 12,
+              border: `1px solid ${borderColor}`,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 12,
+              background: listBg,
+            },
+            '.telemetryList__item': {
+              padding: '10px 12px',
+              borderRadius: 12,
+              border: `1px solid ${subtleBorder}`,
+              background: listItemBg,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 4,
+            },
+            '.backendLog::-webkit-scrollbar-thumb, .terminal::-webkit-scrollbar-thumb, .stringList::-webkit-scrollbar-thumb, .canvasContainer::-webkit-scrollbar-thumb, .telemetryList::-webkit-scrollbar-thumb': {
+              background: alpha(theme.palette.text.primary, 0.25),
+              borderRadius: 999,
+            },
+          };
+        }}
+      />
+      <Box sx={(theme) => ({ minHeight: '100vh', background: theme.custom?.appBackground ?? theme.palette.background.default, pb: 6 })}>
         <AppBar
           position="static"
           elevation={0}
-          sx={{ background: 'rgba(5,6,15,0.85)', borderBottom: '1px solid rgba(255,255,255,0.08)', backdropFilter: 'blur(12px)' }}
+          sx={(theme) => ({
+            background: alpha(theme.custom?.cardBackground ?? theme.palette.background.paper, theme.palette.mode === 'light' ? 0.92 : 0.85),
+            borderBottom: `1px solid ${theme.custom?.cardBorder ?? theme.palette.divider}`,
+            backdropFilter: 'blur(12px)',
+          })}
         >
-          <Toolbar sx={{ gap: 2 }}>
+          <Toolbar sx={{ gap: 2, flexWrap: 'wrap' }}>
             <LogoIcon size={40} />
-            <Box>
+            <Box sx={{ flexGrow: 1, minWidth: 200 }}>
               <Typography variant="h6">WineJS Runtime Studio</Typography>
               <Typography variant="body2" color="text.secondary">
                 Blend console strings, GUI traces, and backend tooling in one React workspace.
               </Typography>
             </Box>
+            <ThemeMenu value={selectedTheme} onChange={setSelectedTheme} options={themeRegistry} />
           </Toolbar>
         </AppBar>
         <Container maxWidth="lg" sx={{ py: 4 }}>

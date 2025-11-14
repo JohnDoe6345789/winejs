@@ -10,6 +10,7 @@ import {
   Typography,
   Box,
 } from '@mui/material';
+import { alpha } from '@mui/material/styles';
 import LanIcon from '@mui/icons-material/Lan';
 import HubIcon from '@mui/icons-material/Hub';
 import CleaningServicesIcon from '@mui/icons-material/CleaningServices';
@@ -32,7 +33,13 @@ function BackendBridgeCard({
   backendLog,
 }) {
   return (
-    <Card variant="outlined" sx={{ borderColor: 'rgba(255,255,255,0.08)' }}>
+    <Card
+      variant="outlined"
+      sx={(theme) => ({
+        borderColor: theme.custom?.cardBorder ?? theme.palette.divider,
+        backgroundColor: theme.custom?.cardBackground ?? theme.palette.background.paper,
+      })}
+    >
       <CardHeader
         avatar={<LanIcon color="secondary" />}
         title="Backend Bridge & Block Device"
@@ -86,12 +93,24 @@ function BackendBridgeCard({
               Create filesystem
             </Button>
           </Stack>
-          <Alert severity="info" sx={{ bgcolor: 'rgba(79,195,247,0.12)' }}>
+          <Alert
+            severity="info"
+            sx={(theme) => ({
+              bgcolor: theme.custom?.infoBackground ?? alpha(theme.palette.primary.main, 0.15),
+            })}
+          >
             {backendStatus}
           </Alert>
           <Box
             className="backendLog"
-            sx={{ maxHeight: 140, overflowY: 'auto', p: 1.5, borderRadius: 2, border: '1px solid rgba(255,255,255,0.1)' }}
+            sx={(theme) => ({
+              maxHeight: 140,
+              overflowY: 'auto',
+              p: 1.5,
+              borderRadius: 2,
+              border: `1px solid ${theme.custom?.cardBorder ?? theme.palette.divider}`,
+              backgroundColor: theme.custom?.cardBackground ?? theme.palette.background.paper,
+            })}
           >
             {backendLog.length ? (
               backendLog.map((entry) => (
