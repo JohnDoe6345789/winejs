@@ -17,6 +17,7 @@ import {
   TextField,
   Chip,
   Alert,
+  LinearProgress,
 } from '@mui/material';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import LanIcon from '@mui/icons-material/Lan';
@@ -24,6 +25,9 @@ import TerminalIcon from '@mui/icons-material/Terminal';
 import CleaningServicesIcon from '@mui/icons-material/CleaningServices';
 import HubIcon from '@mui/icons-material/Hub';
 import SettingsInputComponentIcon from '@mui/icons-material/SettingsInputComponent';
+import MemoryIcon from '@mui/icons-material/Memory';
+import NetworkCheckIcon from '@mui/icons-material/NetworkCheck';
+import StorageIcon from '@mui/icons-material/Storage';
 import LogoIcon from './components/LogoIcon.jsx';
 import SettingsPanel from './components/SettingsPanel.jsx';
 import { WineJS } from './runtime/wine-js.js';
@@ -47,6 +51,58 @@ const theme = createTheme({
 });
 
 const formatFileSize = (bytes) => `${(bytes / 1024).toFixed(1)} KB`;
+const MAX_TASKS = 6;
+const MAX_NETWORK_EVENTS = 60;
+const MAX_DISK_EVENTS = 32;
+
+const formatBytes = (bytes = 0) => {
+  if (!bytes) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let value = bytes;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+  const decimals = value >= 10 || unitIndex === 0 ? 0 : 1;
+  return `${value.toFixed(decimals)} ${units[unitIndex]}`;
+};
+
+const formatTimestamp = (input) => {
+  if (!input) return new Date().toLocaleTimeString();
+  const date = typeof input === 'number' ? new Date(input) : new Date(input);
+  return date.toLocaleTimeString();
+};
+
+const formatConnectionLabel = (payload = {}) => {
+  const connectionId = payload?.connectionId ?? payload?.meta?.connectionId ?? 'socket';
+  const host = payload?.meta?.host ?? payload?.host;
+  const port = payload?.meta?.port ?? payload?.port;
+  return host ? `${connectionId} (${host}:${port ?? '?'})` : connectionId;
+};
+
+const describeDiskActivity = (activity = {}) => {
+  const bytes = activity.bytes ?? 0;
+  const blockIndex = activity.blockIndex ?? '—';
+  if (activity.type === 'read') {
+    return `Read block ${blockIndex} (${formatBytes(bytes)})`;
+  }
+  if (activity.type === 'write') {
+    return `Wrote block ${blockIndex} (${formatBytes(bytes)})`;
+  }
+  if (activity.type === 'format') {
+    return `Formatted block device ${activity.fill ? `(fill ${activity.fill})` : ''}`.trim();
+  }
+  if (activity.type === 'createFilesystem') {
+    return `Created filesystem ${activity.label ?? 'unknown label'}`;
+  }
+  if (activity.type === 'configure') {
+    const size = Number(activity.blockSize ?? 0).toLocaleString();
+    const count = Number(activity.blockCount ?? 0).toLocaleString();
+    return `Configured ${size} B × ${count} blocks`;
+  }
+  return 'Disk activity recorded';
+};
 
 function App() {
   const [pluginState, setPluginState] = React.useState(() => createInitialPluginState());
@@ -65,6 +121,9 @@ function App() {
   const statusRef = React.useRef(null);
   const wineRef = React.useRef(null);
   const [wine, setWine] = React.useState(null);
+  const [tasks, setTasks] = React.useState([]);
+  const [networkEvents, setNetworkEvents] = React.useState([]);
+  const [diskEvents, setDiskEvents] = React.useState([]);
 
   const appendBackendLog = React.useCallback((message) => {
     if (!message) return;
@@ -78,6 +137,80 @@ function App() {
       return next.slice(-200);
     });
   }, []);
+
+  const appendNetworkEvent = React.useCallback((event) => {
+    if (!event) return;
+    setNetworkEvents((prev) => {
+      const entry = {
+        id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        timestamp: Date.now(),
+        ...event,
+      };
+      const next = [entry, ...prev];
+      return next.slice(0, MAX_NETWORK_EVENTS);
+    });
+  }, []);
+
+  const appendDiskEvent = React.useCallback((activity) => {
+    if (!activity) return;
+    setDiskEvents((prev) => {
+      const entry = {
+        id: `${activity.timestamp ?? Date.now()}-${Math.random().toString(16).slice(2)}`,
+        timestamp: activity.timestamp ?? Date.now(),
+        ...activity,
+      };
+      const next = [entry, ...prev];
+      return next.slice(0, MAX_DISK_EVENTS);
+    });
+  }, []);
+
+  const networkMetrics = React.useMemo(() => {
+    let bytesSent = 0;
+    let bytesReceived = 0;
+    const activeConnections = new Set();
+    networkEvents.forEach((entry) => {
+      if (entry.type === 'sent') {
+        bytesSent += entry.byteLength ?? 0;
+      }
+      if (entry.type === 'recv') {
+        bytesReceived += entry.byteLength ?? 0;
+      }
+      const id = entry.connectionId ?? entry.meta?.connectionId;
+      if (!id) return;
+      if (entry.type === 'closed' || entry.type === 'error') {
+        activeConnections.delete(id);
+      } else if (entry.type === 'open' || entry.type === 'opening' || entry.type === 'sent' || entry.type === 'recv') {
+        activeConnections.add(id);
+      }
+    });
+    return {
+      bytesSent,
+      bytesReceived,
+      activeConnections: activeConnections.size,
+    };
+  }, [networkEvents]);
+
+  const diskMetrics = React.useMemo(
+    () =>
+      diskEvents.reduce(
+        (acc, event) => {
+          if (event.type === 'read') {
+            acc.reads += 1;
+            acc.readBytes += event.bytes ?? 0;
+          } else if (event.type === 'write') {
+            acc.writes += 1;
+            acc.writeBytes += event.bytes ?? 0;
+          } else if (event.type === 'format') {
+            acc.formats += 1;
+          } else if (event.type === 'createFilesystem') {
+            acc.lastFilesystem = event.label ?? acc.lastFilesystem;
+          }
+          return acc;
+        },
+        { reads: 0, readBytes: 0, writes: 0, writeBytes: 0, formats: 0, lastFilesystem: null },
+      ),
+    [diskEvents],
+  );
 
   const pluginInstances = React.useMemo(
     () =>
@@ -121,17 +254,19 @@ function App() {
     if (!wine) return undefined;
     const winsock = wine.getWinsockBridge?.();
     if (!winsock?.subscribe) return undefined;
-    const unsubOpen = winsock.subscribe('open', ({ connectionId }) =>
-      appendBackendLog(`Winsock socket ${connectionId} opened.`),
+    const unsubOpen = winsock.subscribe('open', (payload) =>
+      appendBackendLog(`Winsock socket ${formatConnectionLabel(payload)} opened.`),
     );
-    const unsubData = winsock.subscribe('data', ({ connectionId }) =>
-      appendBackendLog(`Winsock socket ${connectionId} received buffered data.`),
+    const unsubData = winsock.subscribe('data', ({ connectionId, byteLength }) =>
+      appendBackendLog(`Winsock socket ${connectionId} received ${formatBytes(byteLength ?? 0)} of buffered data.`),
     );
-    const unsubClosed = winsock.subscribe('closed', ({ connectionId }) =>
-      appendBackendLog(`Winsock socket ${connectionId} closed.`),
+    const unsubClosed = winsock.subscribe('closed', (payload) =>
+      appendBackendLog(`Winsock socket ${formatConnectionLabel(payload)} closed.`),
     );
-    const unsubError = winsock.subscribe('error', ({ connectionId, message }) =>
-      appendBackendLog(`Winsock socket ${connectionId} error: ${message ?? 'unknown issue'}`),
+    const unsubError = winsock.subscribe('error', (payload = {}) =>
+      appendBackendLog(
+        `Winsock socket ${formatConnectionLabel(payload)} error: ${payload?.error ?? payload?.message ?? 'unknown issue'}`,
+      ),
     );
     return () => {
       unsubOpen?.();
@@ -141,16 +276,131 @@ function App() {
     };
   }, [wine, appendBackendLog]);
 
+  React.useEffect(() => {
+    if (!wine) return undefined;
+    const blockDevice = wine.getBlockDeviceClient?.();
+    if (!blockDevice?.subscribe) return undefined;
+    const unsubscribe = blockDevice.subscribe('activity', appendDiskEvent);
+    return () => {
+      unsubscribe?.();
+    };
+  }, [wine, appendDiskEvent]);
+
+  React.useEffect(() => {
+    if (!wine) return undefined;
+    const winsock = wine.getWinsockBridge?.();
+    if (!winsock?.subscribe) return undefined;
+    const unsubOpening = winsock.subscribe('opening', ({ meta }) =>
+      appendNetworkEvent({
+        type: 'opening',
+        connectionId: meta?.connectionId,
+        meta,
+        direction: 'out',
+        message: meta?.host ? `Dialing ${meta.host}:${meta.port}` : 'Opening socket',
+      }),
+    );
+    const unsubOpen = winsock.subscribe('open', (payload = {}) =>
+      appendNetworkEvent({
+        type: 'open',
+        connectionId: payload.connectionId ?? payload.meta?.connectionId,
+        meta: payload.meta,
+        direction: 'out',
+        message: `Socket ${formatConnectionLabel(payload)} ready`,
+      }),
+    );
+    const unsubRecv = winsock.subscribe('data', ({ connectionId, byteLength, meta }) =>
+      appendNetworkEvent({
+        type: 'recv',
+        connectionId,
+        byteLength,
+        meta,
+        direction: 'in',
+        message: `Received ${formatBytes(byteLength ?? 0)}`,
+      }),
+    );
+    const unsubSent = winsock.subscribe('sent', ({ connectionId, byteLength, meta }) =>
+      appendNetworkEvent({
+        type: 'sent',
+        connectionId,
+        byteLength,
+        meta,
+        direction: 'out',
+        message: `Sent ${formatBytes(byteLength ?? 0)}`,
+      }),
+    );
+    const unsubClosed = winsock.subscribe('closed', (payload = {}) =>
+      appendNetworkEvent({
+        type: 'closed',
+        connectionId: payload.connectionId ?? payload.meta?.connectionId,
+        meta: payload.meta,
+        direction: 'out',
+        message: `Socket ${formatConnectionLabel(payload)} closed`,
+      }),
+    );
+    const unsubError = winsock.subscribe('error', (payload = {}) =>
+      appendNetworkEvent({
+        type: 'error',
+        connectionId: payload.connectionId ?? payload.meta?.connectionId,
+        meta: payload.meta,
+        direction: null,
+        message: `Socket error: ${payload?.error ?? payload?.message ?? 'unknown issue'}`,
+      }),
+    );
+    return () => {
+      unsubOpening?.();
+      unsubOpen?.();
+      unsubRecv?.();
+      unsubSent?.();
+      unsubClosed?.();
+      unsubError?.();
+    };
+  }, [wine, appendNetworkEvent]);
+
   const handleFileSelect = async (event) => {
     const file = event.target.files?.[0];
     if (!file || !wine) return;
     setSelectedFile({ name: file.name, size: file.size });
+    const taskId = `task-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const startedAt = Date.now();
+    const baseTask = {
+      id: taskId,
+      name: file.name,
+      size: file.size,
+      status: 'Analyzing',
+      startedAt,
+      progress: 35 + Math.random() * 20,
+      cpu: Math.round(30 + Math.random() * 40),
+      memory: Math.max(24, Math.round(file.size / (1024 * 1024)) || 24),
+      intent: 'Import scan',
+    };
+    setTasks((prev) => {
+      const filtered = prev.filter((task) => task.id !== taskId);
+      return [baseTask, ...filtered].slice(0, MAX_TASKS);
+    });
     setIsSimulating(true);
     try {
       await wine.loadBinary(file);
-      wine.run(file);
+      const simulation = wine.run(file);
+      setTasks((prev) =>
+        prev.map((task) =>
+          task.id === taskId
+            ? {
+                ...task,
+                status: simulation?.error ? 'Failed' : 'Ready',
+                intent: simulation?.guiIntent ? 'GUI intent' : 'Console intent',
+                progress: simulation?.error ? task.progress : 100,
+                cpu: simulation?.error ? 0 : Math.min(100, task.cpu + Math.round(Math.random() * 10)),
+                memory: Math.max(task.memory, Math.round((file.size || 0) / (1024 * 1024)) || task.memory),
+                lastUpdated: Date.now(),
+              }
+            : task,
+        ),
+      );
     } catch (err) {
       setStatusText(`Failed to load ${file.name}. ${err?.message ?? err}`);
+      setTasks((prev) =>
+        prev.map((task) => (task.id === taskId ? { ...task, status: 'Failed', progress: 100, lastUpdated: Date.now() } : task)),
+      );
     } finally {
       setIsSimulating(false);
     }
@@ -247,6 +497,19 @@ function App() {
       },
     }));
   };
+
+  const handleCloseTask = React.useCallback(
+    (taskId) => {
+      setTasks((prev) => {
+        const closing = prev.find((task) => task.id === taskId);
+        if (closing && wine?.log) {
+          wine.log(`[WineJS] Task "${closing.name}" closed from Task Manager.`);
+        }
+        return prev.filter((task) => task.id !== taskId);
+      });
+    },
+    [wine],
+  );
 
   return (
     <ThemeProvider theme={theme}>
@@ -422,12 +685,212 @@ function App() {
                     </Stack>
                   </CardContent>
                 </Card>
-              </Grid>
             </Grid>
+          </Grid>
 
-            <Grid container spacing={3}>
-              <Grid item xs={12} md={6}>
-                <Card variant="outlined" sx={{ borderColor: 'rgba(255,255,255,0.08)' }}>
+          <Grid container spacing={3}>
+            <Grid item xs={12} md={6}>
+              <Card variant="outlined" sx={{ borderColor: 'rgba(255,255,255,0.08)' }}>
+                <CardHeader
+                  avatar={<MemoryIcon color="primary" />}
+                  title="Task Manager"
+                  subheader="Inspect simulated processes and terminate noisy workloads."
+                />
+                <CardContent>
+                  {tasks.length ? (
+                    <Stack spacing={2}>
+                      {tasks.map((task) => {
+                        const chipColor = task.status === 'Failed' ? 'error' : task.status === 'Analyzing' ? 'warning' : 'success';
+                        return (
+                          <Box key={task.id} sx={{ p: 1.5, border: '1px solid rgba(255,255,255,0.08)', borderRadius: 2 }}>
+                            <Stack
+                              direction={{ xs: 'column', sm: 'row' }}
+                              justifyContent="space-between"
+                              alignItems={{ xs: 'flex-start', sm: 'center' }}
+                              spacing={1.5}
+                            >
+                              <Box>
+                                <Typography variant="subtitle1">{task.name}</Typography>
+                                <Typography variant="body2" color="text.secondary">
+                                  {task.intent} • {formatFileSize(task.size)} • Started {formatTimestamp(task.startedAt)}
+                                </Typography>
+                              </Box>
+                              <Stack direction="row" spacing={1} alignItems="center">
+                                <Chip size="small" color={chipColor} label={task.status} />
+                                <Button size="small" color="error" onClick={() => handleCloseTask(task.id)}>
+                                  End task
+                                </Button>
+                              </Stack>
+                            </Stack>
+                            <Stack direction="row" spacing={2} mt={1}>
+                              <Typography variant="caption" color="text.secondary">
+                                CPU {task.cpu}%
+                              </Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                Memory {task.memory} MB
+                              </Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                Updated {formatTimestamp(task.lastUpdated ?? task.startedAt)}
+                              </Typography>
+                            </Stack>
+                            <LinearProgress
+                              variant="determinate"
+                              value={Math.min(100, Math.round(task.progress))}
+                              sx={{ mt: 1, height: 6, borderRadius: 999 }}
+                            />
+                          </Box>
+                        );
+                      })}
+                    </Stack>
+                  ) : (
+                    <Typography variant="body2" color="text.secondary">
+                      Load an executable to seed the task list and manage its workload from here.
+                    </Typography>
+                  )}
+                </CardContent>
+              </Card>
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <Card variant="outlined" sx={{ borderColor: 'rgba(255,255,255,0.08)' }}>
+                <CardHeader
+                  avatar={<NetworkCheckIcon color="secondary" />}
+                  title="Network Telemetry"
+                  subheader="Watch Winsock sockets stream through the backend tunnel."
+                />
+                <CardContent>
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} mb={2}>
+                    <Box>
+                      <Typography variant="overline" color="text.secondary">
+                        Active
+                      </Typography>
+                      <Typography variant="h6">{networkMetrics.activeConnections}</Typography>
+                    </Box>
+                    <Box>
+                      <Typography variant="overline" color="text.secondary">
+                        Sent
+                      </Typography>
+                      <Typography variant="h6">{formatBytes(networkMetrics.bytesSent)}</Typography>
+                    </Box>
+                    <Box>
+                      <Typography variant="overline" color="text.secondary">
+                        Received
+                      </Typography>
+                      <Typography variant="h6">{formatBytes(networkMetrics.bytesReceived)}</Typography>
+                    </Box>
+                  </Stack>
+                  <Box className="telemetryList">
+                    {networkEvents.length ? (
+                      networkEvents.map((entry) => {
+                        const labelMap = {
+                          opening: 'OPENING',
+                          open: 'READY',
+                          recv: 'RX',
+                          sent: 'TX',
+                          closed: 'CLOSED',
+                          error: 'ERROR',
+                        };
+                        const colorMap = {
+                          opening: 'warning',
+                          open: 'success',
+                          recv: 'secondary',
+                          sent: 'primary',
+                          closed: 'default',
+                          error: 'error',
+                        };
+                        return (
+                          <Box key={entry.id} className="telemetryList__item">
+                            <Stack spacing={0.5}>
+                              <Stack direction="row" spacing={1} alignItems="center">
+                                <Chip
+                                  size="small"
+                                  color={colorMap[entry.type] ?? 'default'}
+                                  label={labelMap[entry.type] ?? entry.type?.toUpperCase()}
+                                />
+                                <Typography variant="caption" color="text.secondary">
+                                  {formatConnectionLabel(entry)}
+                                </Typography>
+                              </Stack>
+                              <Typography variant="body2">{entry.message}</Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                {formatTimestamp(entry.timestamp)}
+                              </Typography>
+                            </Stack>
+                          </Box>
+                        );
+                      })
+                    ) : (
+                      <Typography variant="body2" color="text.secondary">
+                        Socket activity will be mirrored here once the runtime dials a backend target.
+                      </Typography>
+                    )}
+                  </Box>
+                </CardContent>
+              </Card>
+            </Grid>
+            <Grid item xs={12}>
+              <Card variant="outlined" sx={{ borderColor: 'rgba(255,255,255,0.08)' }}>
+                <CardHeader
+                  avatar={<StorageIcon color="warning" />}
+                  title="Disk Activity"
+                  subheader="Track block reads, writes, and filesystem events from the block device client."
+                />
+                <CardContent>
+                  <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} mb={2}>
+                    <Box>
+                      <Typography variant="overline" color="text.secondary">
+                        Reads
+                      </Typography>
+                      <Typography variant="subtitle1">
+                        {diskMetrics.reads} • {formatBytes(diskMetrics.readBytes)}
+                      </Typography>
+                    </Box>
+                    <Box>
+                      <Typography variant="overline" color="text.secondary">
+                        Writes
+                      </Typography>
+                      <Typography variant="subtitle1">
+                        {diskMetrics.writes} • {formatBytes(diskMetrics.writeBytes)}
+                      </Typography>
+                    </Box>
+                    <Box>
+                      <Typography variant="overline" color="text.secondary">
+                        Formats
+                      </Typography>
+                      <Typography variant="subtitle1">{diskMetrics.formats}</Typography>
+                    </Box>
+                    {diskMetrics.lastFilesystem ? (
+                      <Box>
+                        <Typography variant="overline" color="text.secondary">
+                          Filesystem Label
+                        </Typography>
+                        <Typography variant="subtitle1">{diskMetrics.lastFilesystem}</Typography>
+                      </Box>
+                    ) : null}
+                  </Stack>
+                  <Box className="telemetryList">
+                    {diskEvents.length ? (
+                      diskEvents.map((activity) => (
+                        <Box key={activity.id} className="telemetryList__item">
+                          <Typography variant="body2">{describeDiskActivity(activity)}</Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {formatTimestamp(activity.timestamp)}
+                          </Typography>
+                        </Box>
+                      ))
+                    ) : (
+                      <Typography variant="body2" color="text.secondary">
+                        Disk operations (configure, format, block IO) will stream in after the backend bridge is active.
+                      </Typography>
+                    )}
+                  </Box>
+                </CardContent>
+              </Card>
+            </Grid>
+          </Grid>
+
+          <Grid container spacing={3}>
+            <Grid item xs={12} md={6}>
+              <Card variant="outlined" sx={{ borderColor: 'rgba(255,255,255,0.08)' }}>
                   <CardHeader title="Console Output" subheader="Hooks into WriteConsole imports." />
                   <CardContent>
                     <Box ref={consoleRef} className="terminal" />

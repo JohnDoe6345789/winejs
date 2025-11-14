@@ -7,6 +7,7 @@ export class BlockDeviceClient {
     this.blockSize = 4096;
     this.blockCount = 2048;
     this.initialized = false;
+    this.listeners = new Map();
   }
 
   setBridge(bridge) {
@@ -14,6 +15,39 @@ export class BlockDeviceClient {
     if (!bridge) {
       this.initialized = false;
     }
+  }
+
+  subscribe(event, handler) {
+    if (!event || typeof handler !== 'function') return () => {};
+    if (!this.listeners.has(event)) this.listeners.set(event, new Set());
+    const set = this.listeners.get(event);
+    set.add(handler);
+    return () => {
+      set.delete(handler);
+      if (!set.size) this.listeners.delete(event);
+    };
+  }
+
+  emit(event, payload) {
+    const set = this.listeners.get(event);
+    if (!set) return;
+    set.forEach((handler) => {
+      try {
+        handler(payload);
+      } catch (err) {
+        this.log?.(`[WineJS] Block device client listener error (${event}): ${err?.message ?? err}`);
+      }
+    });
+  }
+
+  emitActivity(type, payload = {}) {
+    this.emit('activity', {
+      type,
+      timestamp: Date.now(),
+      blockSize: this.blockSize,
+      blockCount: this.blockCount,
+      ...payload,
+    });
   }
 
   getGeometry() {
@@ -32,13 +66,22 @@ export class BlockDeviceClient {
     if (response?.blockSize) this.blockSize = response.blockSize;
     if (response?.blockCount) this.blockCount = response.blockCount;
     this.initialized = true;
+    this.emitActivity('configure', {
+      blockSize: this.blockSize,
+      blockCount: this.blockCount,
+    });
     return this.getGeometry();
   }
 
   async readBlock(blockIndex) {
     const payload = await this.ensureBridge().request('block:read', { blockIndex });
-    if (!payload?.data) return new Uint8Array();
-    return base64ToBytes(payload.data);
+    if (!payload?.data) {
+      this.emitActivity('read', { blockIndex, bytes: 0 });
+      return new Uint8Array();
+    }
+    const buffer = base64ToBytes(payload.data);
+    this.emitActivity('read', { blockIndex, bytes: buffer.length });
+    return buffer;
   }
 
   async writeBlock(blockIndex, bytes) {
@@ -47,14 +90,20 @@ export class BlockDeviceClient {
       blockIndex,
       data: bytesToBase64(buffer),
     });
+    this.emitActivity('write', { blockIndex, bytes: buffer.length });
   }
 
   async format(fill = 0) {
     await this.ensureBridge().request('block:format', { fill });
+    this.emitActivity('format', { fill });
   }
 
   async createFilesystem({ label, fill = 0 } = {}) {
     const payload = await this.ensureBridge().request('block:createfs', { label, fill });
+    this.emitActivity('createFilesystem', {
+      label: payload?.label ?? label,
+      fill,
+    });
     return payload;
   }
 

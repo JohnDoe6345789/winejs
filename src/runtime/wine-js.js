@@ -242,7 +242,7 @@ export class WineJS {
     const buffer = this.modules.get(file.name);
     if (!buffer) {
       this.log('[WineJS] No binary loaded.');
-      return;
+      return null;
     }
 
     this.clearConsole();
@@ -259,7 +259,7 @@ export class WineJS {
       this.displayStrings(printableStrings);
       this.log(`[WineJS] x86 simulation failed: ${simulation.error}`);
       this.runHook('onSimulationError', { file, buffer, error: simulation.error });
-      return;
+      return simulation;
     }
     statusChunks.push(`imports walked: ${simulation.importTrace.length}`);
     statusChunks.push(simulation.guiIntent ? 'GUI intent via API usage' : 'Console intent via API usage');
@@ -282,5 +282,6 @@ export class WineJS {
       this.log('[WineJS] Simulation completed with no console output detected.');
       this.runHook('onSilentConsole', { file, simulation });
     }
+    return simulation;
   }
 }

@@ -7,6 +7,7 @@ export class WinsockBridge {
     this.buffers = new Map();
     this.listeners = new Map();
     this.unsubscribeFns = [];
+    this.connectionMeta = new Map();
     if (bridge) {
       this.setBridge(bridge);
     }
@@ -16,6 +17,7 @@ export class WinsockBridge {
     this.cleanup();
     this.bridge = bridge ?? null;
     this.buffers.clear();
+    this.connectionMeta.clear();
     if (!bridge || !bridge.subscribe) {
       return;
     }
@@ -65,19 +67,24 @@ export class WinsockBridge {
     if (!connectionId || !data) return;
     const id = String(connectionId);
     const queue = this.buffers.get(id) ?? [];
-    queue.push(base64ToBytes(data));
+    const buffer = base64ToBytes(data);
+    queue.push(buffer);
     this.buffers.set(id, queue);
-    this.emit('data', { connectionId: id });
+    const meta = this.touchMeta(id, { bytesReceived: buffer.length });
+    this.emit('data', { connectionId: id, byteLength: buffer.length, meta });
   }
 
   handleClose({ connectionId }) {
     const id = String(connectionId);
     this.buffers.delete(id);
-    this.emit('closed', { connectionId: id });
+    const meta = this.touchMeta(id, { status: 'closed' });
+    this.emit('closed', { connectionId: id, meta });
   }
 
   handleEvent(event, payload) {
-    this.emit(event, payload);
+    const id = payload?.connectionId ? String(payload.connectionId) : null;
+    const meta = id ? this.touchMeta(id, event === 'error' ? { status: 'error' } : {}) : null;
+    this.emit(event, meta ? { ...payload, meta } : payload);
   }
 
   ensureBridge() {
@@ -91,19 +98,55 @@ export class WinsockBridge {
   }
 
   openConnection({ connectionId, host, port }) {
-    return this.ensureBridge().request('winsock:open', { connectionId, host, port });
+    const id = String(connectionId);
+    const meta = {
+      connectionId: id,
+      host,
+      port,
+      openedAt: Date.now(),
+      status: 'opening',
+      bytesReceived: 0,
+      bytesSent: 0,
+    };
+    this.connectionMeta.set(id, meta);
+    this.emit('opening', { meta });
+    return this.ensureBridge()
+      .request('winsock:open', { connectionId, host, port })
+      .then((response) => {
+        this.touchMeta(id, { status: 'open' });
+        return response;
+      })
+      .catch((err) => {
+        this.touchMeta(id, { status: 'error' });
+        this.emit('error', { connectionId, meta: this.connectionMeta.get(id), error: err?.message ?? String(err) });
+        throw err;
+      });
   }
 
   send(connectionId, bytes) {
     const buffer = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes ?? []);
-    return this.ensureBridge().request('winsock:send', {
-      connectionId,
-      data: bytesToBase64(buffer),
-    });
+    const id = String(connectionId);
+    return this.ensureBridge()
+      .request('winsock:send', {
+        connectionId,
+        data: bytesToBase64(buffer),
+      })
+      .then((response) => {
+        const meta = this.touchMeta(id, { bytesSent: buffer.length });
+        this.emit('sent', { connectionId: id, byteLength: buffer.length, meta });
+        return response;
+      });
   }
 
   close(connectionId) {
-    return this.ensureBridge().request('winsock:close', { connectionId });
+    const id = String(connectionId);
+    return this.ensureBridge()
+      .request('winsock:close', { connectionId })
+      .then((response) => {
+        const meta = this.touchMeta(id, { status: 'closing' });
+        this.emit('closing', { connectionId: id, meta });
+        return response;
+      });
   }
 
   consume(connectionId, length) {
@@ -134,5 +177,30 @@ export class WinsockBridge {
       offset += chunk.length;
     });
     return result;
+  }
+
+  touchMeta(connectionId, delta = {}) {
+    if (!connectionId) return null;
+    const id = String(connectionId);
+    const meta = this.connectionMeta.get(id) ?? {
+      connectionId: id,
+      host: undefined,
+      port: undefined,
+      openedAt: Date.now(),
+      status: 'unknown',
+      bytesReceived: 0,
+      bytesSent: 0,
+    };
+    if (typeof delta.bytesReceived === 'number') {
+      meta.bytesReceived += delta.bytesReceived;
+    }
+    if (typeof delta.bytesSent === 'number') {
+      meta.bytesSent += delta.bytesSent;
+    }
+    if (delta.status) {
+      meta.status = delta.status;
+    }
+    this.connectionMeta.set(id, meta);
+    return meta;
   }
 }
