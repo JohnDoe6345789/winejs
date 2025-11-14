@@ -6,7 +6,11 @@ import { createImportHandler } from './import-handler.js';
 import { SimulatorBridge } from './simulator/simulator-bridge.js';
 import { decodeBase64Executable } from './base64.js';
 import { createConsoleOutputImportPlugin } from './import-plugins/console-output-plugin.js';
+import { createWinsockWebSocketImportPlugin } from './import-plugins/winsock-websocket-plugin.js';
 import { createX86SimulatorPlugin } from './simulator/plugins/x86-simulator-plugin.js';
+import { BackendBridge } from './services/backend-bridge.js';
+import { BlockDeviceClient } from './services/block-device-client.js';
+import { WinsockBridge } from './services/winsock-bridge.js';
 
 export class WineJS {
   constructor({ consoleEl, stringEl, canvasEl, statusEl, plugins = [], importPlugins, simulatorPlugins } = {}) {
@@ -20,6 +24,13 @@ export class WineJS {
     this.utf16Decoder = new TextDecoder('utf-16le');
     this.plugins = [];
     this.importPlugins = [];
+    this.backendBridge = null;
+    this.blockDevice = new BlockDeviceClient({
+      log: (message) => this.log(message),
+    });
+    this.winsockBridge = new WinsockBridge({
+      log: (message) => this.log(message),
+    });
 
     const importHandler = createImportHandler({
       readAnsiString: (cpu, address, maxLength) =>
@@ -35,7 +46,15 @@ export class WineJS {
       importHandler: (params) => this.importHandler(params),
     });
 
-    const defaultImportPlugins = importPlugins ?? [createConsoleOutputImportPlugin()];
+    const defaultImportPlugins =
+      importPlugins ??
+      [
+        createConsoleOutputImportPlugin(),
+        createWinsockWebSocketImportPlugin({
+          getWinsockBridge: () => this.winsockBridge,
+          log: (message) => this.log(message),
+        }),
+      ];
     defaultImportPlugins.forEach((plugin) => this.registerImportPlugin(plugin));
 
     const defaultSimulatorPlugins = simulatorPlugins ?? [createX86SimulatorPlugin()];
@@ -163,6 +182,44 @@ export class WineJS {
 
   readWideString(cpu, address, maxChars = 256) {
     return readWideString(cpu, address, this.utf16Decoder, maxChars);
+  }
+
+  async connectBackend(url) {
+    const bridge = new BackendBridge({
+      url,
+      log: (message) => this.log(message),
+    });
+    await bridge.connect(url);
+    this.backendBridge?.disconnect?.();
+    this.backendBridge = bridge;
+    this.blockDevice.setBridge(bridge);
+    this.winsockBridge.setBridge(bridge);
+    return bridge;
+  }
+
+  disconnectBackend() {
+    this.backendBridge?.disconnect?.();
+    this.backendBridge = null;
+    this.blockDevice.setBridge(null);
+    this.winsockBridge.setBridge(null);
+  }
+
+  getBackendStatus() {
+    if (!this.backendBridge) {
+      return { connected: false, url: null };
+    }
+    return {
+      connected: this.backendBridge.isConnected?.() ?? false,
+      url: this.backendBridge.url,
+    };
+  }
+
+  getBlockDeviceClient() {
+    return this.blockDevice;
+  }
+
+  getWinsockBridge() {
+    return this.winsockBridge;
   }
 
   CreateWindowEx(x, y, width, height, title) {

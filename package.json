@@ -7,6 +7,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "dev": "http-server . -p 4173 -c-1",
+    "backend": "node scripts/backend-server.js",
     "cy:open": "cypress open",
     "cy:run": "cypress run"
   },
@@ -27,5 +28,8 @@
     "http-server": "^14.1.1",
     "jsdom": "^27.2.0",
     "vitest": "^4.0.8"
+  },
+  "dependencies": {
+    "ws": "^8.18.3"
   }
 }

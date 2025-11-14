@@ -24,6 +24,21 @@ WineJS is a playground for exploring how much of the Win32 execution model can b
    ```
 3. Open `index.html` in a modern browser, select one of the compiled `.exe` files, and watch the runtime step through the entry-point instructions. Calls routed through the Import Address Table (for example `kernel32!WriteConsole*` or the common `user32` window creation helpers) are intercepted so the console panel and faux canvas can reflect what the binary attempted to do.
 
+## WebSocket Backend: Block Device & Winsock Tunnel
+
+The frontend can now talk to a lightweight Node.js backend that exposes both a block device abstraction and a Winsock-over-WebSocket tunnel so the x86 shim can persist storage and proxy socket traffic outside of the browser sandbox.
+
+1. Start the backend inside this repo:
+   ```bash
+   npm run backend
+   ```
+   By default it listens on `ws://localhost:8089`, keeps the block image at `build/winejs-block-device.bin`, and will grow/shrink the image when you change the block size/count from the UI.
+2. Open `index.html`, scroll to the **Backend & Storage Controls** panel, set the WebSocket URL if you used a non-default port, and click **Connect**.
+3. Use the slider inputs to pick the block size and block count, then click **Format Block Device** or **Create Filesystem** to zero the image and stamp metadata. These commands are routed to the backend in real time and the activity log in the UI will confirm each operation.
+4. When WineJS intercepts Winsock imports (`WSAStartup`, `connect`, `send`, `recv`, etc.) the data now rides over the same backend channel. The backend opens a matching TCP socket and streams responses back to the emulator, and the frontend log will show connection/data/close events so you can trace the traffic.
+
+The backend script is pure JavaScript, so you can adapt it to different storage locations or networking policies by tweaking `scripts/backend-server.js`.
+
 ## x86-64 Simulation Overview
 
 The browser runtime now includes `emulator.js`, a minimal PE32+ parser and x86-64 instruction simulator. The shim:

@@ -37,6 +37,46 @@
         <div class="panel__title">GUI Canvas Sandbox</div>
         <div id="canvasContainer" class="panel__body canvasContainer"></div>
       </article>
+
+      <article class="panel panel--wide">
+        <div class="panel__title">Backend &amp; Storage Controls</div>
+        <div class="panel__body backendPanel">
+          <form id="backendConfig" class="backendPanel__form">
+            <label>
+              <span>Backend WebSocket URL</span>
+              <input type="url" id="backendUrl" value="ws://localhost:8089" required>
+            </label>
+            <div class="backendPanel__actions">
+              <button type="submit">Connect</button>
+              <button type="button" id="disconnectBackend">Disconnect</button>
+            </div>
+          </form>
+
+          <div id="backendStatusText" class="backendStatusText">Backend disconnected.</div>
+
+          <div class="backendGrid">
+            <label>
+              <span>Block Size (bytes)</span>
+              <input type="number" id="blockSizeInput" min="512" step="512" value="4096">
+            </label>
+            <label>
+              <span>Block Count</span>
+              <input type="number" id="blockCountInput" min="8" step="8" value="2048">
+            </label>
+            <label>
+              <span>Filesystem Label</span>
+              <input type="text" id="filesystemLabel" maxlength="32" value="WineJS">
+            </label>
+          </div>
+
+          <div class="backendActions">
+            <button type="button" id="formatBlockDevice">Format Block Device</button>
+            <button type="button" id="createFilesystemButton">Create Filesystem</button>
+          </div>
+
+          <div id="backendLog" class="backendLog" role="log" aria-live="polite"></div>
+        </div>
+      </article>
     </section>
   </main>
 
