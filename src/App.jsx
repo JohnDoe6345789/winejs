@@ -44,6 +44,9 @@ function App() {
     backendUrl,
     blockSize,
     blockCount,
+    driveCount,
+    driveLetters,
+    selectedDrive,
     filesystemLabel,
     backendStatus,
     backendLog,
@@ -55,7 +58,9 @@ function App() {
     handleBackendUrlChange,
     handleBlockSizeChange,
     handleBlockCountChange,
+    handleDriveCountChange,
     handleFilesystemLabelChange,
+    handleSelectedDriveChange,
   } = useBackendBridge(wine);
 
   const {
@@ -213,6 +218,11 @@ function App() {
                   onBlockSizeChange={handleBlockSizeChange}
                   blockCount={blockCount}
                   onBlockCountChange={handleBlockCountChange}
+                  driveCount={driveCount}
+                  onDriveCountChange={handleDriveCountChange}
+                  driveLetters={driveLetters}
+                  selectedDrive={selectedDrive}
+                  onSelectedDriveChange={handleSelectedDriveChange}
                   filesystemLabel={filesystemLabel}
                   onFilesystemLabelChange={handleFilesystemLabelChange}
                   onConnect={connectBackend}

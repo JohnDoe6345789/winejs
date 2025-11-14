@@ -64,7 +64,8 @@ export function useTelemetryState() {
           } else if (event.type === 'format') {
             acc.formats += 1;
           } else if (event.type === 'createFilesystem') {
-            acc.lastFilesystem = event.label ?? acc.lastFilesystem;
+            const label = event.label ?? acc.lastFilesystem ?? 'unknown filesystem';
+            acc.lastFilesystem = event.driveLetter ? `${label} (${event.driveLetter})` : label;
           }
           return acc;
         },

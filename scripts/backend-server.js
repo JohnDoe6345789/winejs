@@ -12,6 +12,11 @@ const __dirname = path.dirname(__filename);
 const DEFAULT_PORT = Number(process.env.WINEJS_BACKEND_PORT ?? 8089);
 const DEFAULT_BLOCK_PATH =
   process.env.WINEJS_BLOCK_PATH ?? path.resolve(__dirname, '../build/winejs-block-device.bin');
+const DRIVE_SEQUENCE = [
+  ...'CDEFGHIJKLMNOPQRSTUVWXYZ'.split(''),
+  'A',
+  'B',
+];
 
 function clampNumber(value, fallback, { min = 1, max = Number.MAX_SAFE_INTEGER } = {}) {
   const num = Number(value);
@@ -21,11 +26,12 @@ function clampNumber(value, fallback, { min = 1, max = Number.MAX_SAFE_INTEGER }
 }
 
 class BlockDeviceStore {
-  constructor({ filePath = DEFAULT_BLOCK_PATH, blockSize = 4096, blockCount = 2048 } = {}) {
+  constructor({ filePath = DEFAULT_BLOCK_PATH, blockSize = 4096, blockCount = 2048, driveLetter = 'C' } = {}) {
     this.filePath = filePath;
     this.metaPath = `${filePath}.meta.json`;
     this.blockSize = blockSize;
     this.blockCount = blockCount;
+    this.driveLetter = driveLetter;
     this.ensureDirectory();
     this.ensureSize();
   }
@@ -113,9 +119,134 @@ class BlockDeviceStore {
       blockSize: this.blockSize,
       blockCount: this.blockCount,
       createdAt: new Date().toISOString(),
+      driveLetter: this.driveLetter,
     };
     fs.writeFileSync(this.metaPath, JSON.stringify(meta, null, 2));
     return meta;
+  }
+}
+
+class BlockDeviceFleet {
+  constructor({ filePath = DEFAULT_BLOCK_PATH, blockSize = 4096, blockCount = 2048, driveCount = 1 } = {}) {
+    this.basePath = filePath;
+    this.blockSize = clampNumber(blockSize, 4096, { min: 512, max: 1 << 20 });
+    this.blockCount = clampNumber(blockCount, 2048, { min: 8, max: 1 << 20 });
+    this.driveCount = clampNumber(driveCount ?? 1, 1, { min: 1, max: DRIVE_SEQUENCE.length });
+    this.drives = new Map();
+    this.ensureDrives();
+  }
+
+  getDriveLetters() {
+    return DRIVE_SEQUENCE.slice(0, this.driveCount);
+  }
+
+  getPrimaryDriveLetter() {
+    if (this.drives.has('C')) return 'C';
+    const letters = this.getDriveLetters();
+    if (!letters.length) {
+      throw new Error('No block devices configured.');
+    }
+    return letters[0];
+  }
+
+  buildDrivePath(letter) {
+    if (!letter || letter === 'C') {
+      return this.basePath;
+    }
+    const ext = path.extname(this.basePath);
+    const dir = path.dirname(this.basePath);
+    const baseName = ext ? path.basename(this.basePath, ext) : path.basename(this.basePath);
+    const suffix = ext || '.bin';
+    return path.join(dir, `${baseName}-${letter}${suffix}`);
+  }
+
+  ensureDrives() {
+    const activeLetters = this.getDriveLetters();
+    activeLetters.forEach((letter) => {
+      if (!this.drives.has(letter)) {
+        const store = new BlockDeviceStore({
+          filePath: this.buildDrivePath(letter),
+          blockSize: this.blockSize,
+          blockCount: this.blockCount,
+          driveLetter: letter,
+        });
+        this.drives.set(letter, store);
+      } else {
+        const store = this.drives.get(letter);
+        store.configure({ blockSize: this.blockSize, blockCount: this.blockCount });
+      }
+    });
+    Array.from(this.drives.keys()).forEach((letter) => {
+      if (!activeLetters.includes(letter)) {
+        this.drives.delete(letter);
+      }
+    });
+  }
+
+  configure({ blockSize, blockCount, driveCount } = {}) {
+    this.blockSize = clampNumber(blockSize ?? this.blockSize, this.blockSize, { min: 512, max: 1 << 20 });
+    this.blockCount = clampNumber(blockCount ?? this.blockCount, this.blockCount, { min: 8, max: 1 << 20 });
+    this.driveCount = clampNumber(driveCount ?? this.driveCount, this.driveCount, {
+      min: 1,
+      max: DRIVE_SEQUENCE.length,
+    });
+    this.ensureDrives();
+    return this.getMetadata();
+  }
+
+  getMetadata() {
+    const drives = this.getDriveLetters().map((letter) => {
+      const store = this.drives.get(letter);
+      return {
+        letter,
+        blockSize: store.blockSize,
+        blockCount: store.blockCount,
+        filePath: store.filePath,
+      };
+    });
+    return {
+      blockSize: this.blockSize,
+      blockCount: this.blockCount,
+      driveCount: this.driveCount,
+      drives,
+      primaryDrive: this.getPrimaryDriveLetter(),
+    };
+  }
+
+  resolveDrive(letter) {
+    const normalized = typeof letter === 'string' && letter.trim() ? letter.trim().toUpperCase() : null;
+    const target = normalized && this.drives.has(normalized) ? normalized : this.getPrimaryDriveLetter();
+    const store = this.drives.get(target);
+    if (!store) {
+      throw new Error(`Block device ${target} unavailable.`);
+    }
+    return { store, letter: target };
+  }
+
+  readBlock({ driveLetter, blockIndex } = {}) {
+    const { store, letter } = this.resolveDrive(driveLetter);
+    const index = clampNumber(blockIndex, 0, { min: 0, max: store.blockCount - 1 });
+    const buffer = store.readBlock(index);
+    return { buffer, blockIndex: index, driveLetter: letter };
+  }
+
+  writeBlock({ driveLetter, blockIndex, data } = {}) {
+    const { store, letter } = this.resolveDrive(driveLetter);
+    const index = clampNumber(blockIndex, 0, { min: 0, max: store.blockCount - 1 });
+    store.writeBlock(index, data ?? Buffer.alloc(0));
+    return { blockIndex: index, driveLetter: letter };
+  }
+
+  formatDrive({ driveLetter, fill = 0 } = {}) {
+    const { store, letter } = this.resolveDrive(driveLetter);
+    store.format(fill);
+    return { driveLetter: letter, fill };
+  }
+
+  createFilesystem({ driveLetter, label, fill = 0 } = {}) {
+    const { store, letter } = this.resolveDrive(driveLetter);
+    const meta = store.createFilesystem({ label, fill });
+    return { ...meta, driveLetter: letter };
   }
 }
 
@@ -184,7 +315,7 @@ class WinsockBroker {
   }
 }
 
-const blockStore = new BlockDeviceStore({});
+const blockFleet = new BlockDeviceFleet({});
 
 function sendResponse(ws, { action, requestId, ok, payload, error }) {
   const message = {
@@ -206,44 +337,50 @@ async function handleAction(ws, broker, { action, payload, requestId }) {
   try {
     switch (action) {
       case 'block:init': {
-        const { blockSize, blockCount } = blockStore.configure(payload ?? {});
-        sendResponse(ws, { action, requestId, ok: true, payload: { blockSize, blockCount } });
+        const geometry = blockFleet.configure(payload ?? {});
+        sendResponse(ws, { action, requestId, ok: true, payload: geometry });
         break;
       }
       case 'block:read': {
-        const index = clampNumber(payload?.blockIndex, 0, { min: 0, max: blockStore.blockCount - 1 });
-        const buffer = blockStore.readBlock(index);
+        const result = blockFleet.readBlock(payload ?? {});
         sendResponse(ws, {
           action,
           requestId,
           ok: true,
-          payload: { blockIndex: index, data: buffer.toString('base64') },
+          payload: {
+            blockIndex: result.blockIndex,
+            driveLetter: result.driveLetter,
+            data: result.buffer.toString('base64'),
+          },
         });
         break;
       }
       case 'block:write': {
         if (!payload) throw new Error('Missing payload for block:write');
-        const index = clampNumber(payload.blockIndex, 0, { min: 0, max: blockStore.blockCount - 1 });
         const data = Buffer.from(payload.data ?? '', 'base64');
-        blockStore.writeBlock(index, data);
+        const result = blockFleet.writeBlock({ ...payload, data });
         sendResponse(ws, {
           action,
           requestId,
           ok: true,
-          payload: { blockIndex: index },
+          payload: { blockIndex: result.blockIndex, driveLetter: result.driveLetter },
         });
         break;
       }
       case 'block:format': {
         const fill = clampNumber(payload?.fill ?? 0, 0, { min: 0, max: 255 });
-        blockStore.format(fill);
-        sendResponse(ws, { action, requestId, ok: true });
+        const result = blockFleet.formatDrive({ driveLetter: payload?.driveLetter ?? payload?.drive, fill });
+        sendResponse(ws, { action, requestId, ok: true, payload: result });
         break;
       }
       case 'block:createfs': {
         const label = String(payload?.label ?? 'WineJS');
         const fill = clampNumber(payload?.fill ?? 0, 0, { min: 0, max: 255 });
-        const meta = blockStore.createFilesystem({ label, fill });
+        const meta = blockFleet.createFilesystem({
+          driveLetter: payload?.driveLetter ?? payload?.drive,
+          label,
+          fill,
+        });
         sendResponse(ws, { action, requestId, ok: true, payload: meta });
         break;
       }
@@ -298,7 +435,11 @@ function startServer(port = DEFAULT_PORT) {
 
   httpServer.listen(port, () => {
     console.log(`[WineJS] Backend listening on ws://localhost:${port}`);
-    console.log(`[WineJS] Block device ${blockStore.blockSize} bytes × ${blockStore.blockCount} blocks`);
+    console.log(
+      `[WineJS] Block devices ${blockFleet.blockSize} bytes × ${blockFleet.blockCount} blocks across ${blockFleet.driveCount} drive(s): ${blockFleet
+        .getDriveLetters()
+        .join(', ')}`,
+    );
   });
 }
 
@@ -307,4 +448,4 @@ if (import.meta.url === `file://${__filename}`) {
   startServer(port);
 }
 
-export { startServer, BlockDeviceStore, WinsockBroker };
+export { startServer, BlockDeviceStore, BlockDeviceFleet, WinsockBroker };

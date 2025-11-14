@@ -30,22 +30,25 @@ export const formatConnectionLabel = (payload = {}) => {
 export const describeDiskActivity = (activity = {}) => {
   const bytes = activity.bytes ?? 0;
   const blockIndex = activity.blockIndex ?? '—';
+  const drivePrefix = activity.driveLetter ? `Drive ${activity.driveLetter}: ` : '';
   if (activity.type === 'read') {
-    return `Read block ${blockIndex} (${formatBytes(bytes)})`;
+    return `${drivePrefix}Read block ${blockIndex} (${formatBytes(bytes)})`;
   }
   if (activity.type === 'write') {
-    return `Wrote block ${blockIndex} (${formatBytes(bytes)})`;
+    return `${drivePrefix}Wrote block ${blockIndex} (${formatBytes(bytes)})`;
   }
   if (activity.type === 'format') {
-    return `Formatted block device ${activity.fill ? `(fill ${activity.fill})` : ''}`.trim();
+    const fillText = activity.fill ? `(fill ${activity.fill})` : '';
+    return `${drivePrefix}Formatted block device ${fillText}`.trim();
   }
   if (activity.type === 'createFilesystem') {
-    return `Created filesystem ${activity.label ?? 'unknown label'}`;
+    return `${drivePrefix}Created filesystem ${activity.label ?? 'unknown label'}`;
   }
   if (activity.type === 'configure') {
     const size = Number(activity.blockSize ?? 0).toLocaleString();
     const count = Number(activity.blockCount ?? 0).toLocaleString();
-    return `Configured ${size} B × ${count} blocks`;
+    const drives = activity.driveLetters?.length ? ` • Drives: ${activity.driveLetters.join(', ')}` : '';
+    return `Configured ${size} B × ${count} blocks${drives}`;
   }
   return 'Disk activity recorded';
 };

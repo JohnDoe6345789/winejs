@@ -14,6 +14,9 @@ export function setupWineRuntime() {
   const backendStatusText = document.getElementById('backendStatusText');
   const blockSizeInput = document.getElementById('blockSizeInput');
   const blockCountInput = document.getElementById('blockCountInput');
+  const driveCountInput = document.getElementById('driveCountInput');
+  const driveLetterInput = document.getElementById('driveLetterInput');
+  const driveSummary = document.getElementById('driveSummary');
   const filesystemLabelInput = document.getElementById('filesystemLabel');
   const backendLog = document.getElementById('backendLog');
   const formatBlockButton = document.getElementById('formatBlockDevice');
@@ -59,6 +62,26 @@ export function setupWineRuntime() {
     return Number.isFinite(value) && value > 0 ? value : fallback;
   }
 
+  let availableDrives = ['C'];
+  let activeDrive = 'C';
+
+  function updateDriveState(geometry) {
+    availableDrives = geometry?.drives?.map((drive) => drive?.letter).filter(Boolean) ?? ['C'];
+    activeDrive = geometry?.primaryDrive ?? availableDrives[0] ?? activeDrive ?? 'C';
+    if (driveCountInput) driveCountInput.value = geometry?.driveCount ?? availableDrives.length;
+    if (driveLetterInput) driveLetterInput.value = activeDrive;
+    if (driveSummary) driveSummary.textContent = availableDrives.join(', ');
+  }
+
+  function getTargetDrive() {
+    const manual = driveLetterInput?.value?.trim()?.toUpperCase();
+    if (manual && availableDrives.includes(manual)) {
+      activeDrive = manual;
+      return manual;
+    }
+    return activeDrive ?? 'C';
+  }
+
   backendForm?.addEventListener('submit', async (event) => {
     event.preventDefault();
     const url = backendUrlInput?.value?.trim();
@@ -71,9 +94,13 @@ export function setupWineRuntime() {
       await wine.connectBackend(url);
       const blockSize = parseNumberInput(blockSizeInput, 4096);
       const blockCount = parseNumberInput(blockCountInput, 2048);
-      const geometry = await wine.getBlockDeviceClient().configure({ blockSize, blockCount });
+      const driveCount = parseNumberInput(driveCountInput, 1);
+      const geometry = await wine.getBlockDeviceClient().configure({ blockSize, blockCount, driveCount });
+      updateDriveState(geometry);
       updateBackendStatus(
-        `Connected: ${geometry.blockSize.toLocaleString()} bytes × ${geometry.blockCount.toLocaleString()} blocks`,
+        `Connected: ${geometry.blockSize.toLocaleString()} bytes × ${geometry.blockCount.toLocaleString()} blocks · ${
+          geometry.driveCount ?? availableDrives.length
+        } drive(s) (${availableDrives.join(', ')})`,
       );
       appendBackendLog(`Backend connected at ${url}`);
     } catch (err) {
@@ -85,14 +112,19 @@ export function setupWineRuntime() {
   disconnectBackendButton?.addEventListener('click', () => {
     wine.disconnectBackend();
     updateBackendStatus('Backend disconnected.');
+    availableDrives = ['C'];
+    activeDrive = 'C';
+    if (driveLetterInput) driveLetterInput.value = 'C';
+    if (driveSummary) driveSummary.textContent = 'C';
     appendBackendLog('Backend disconnected by user.');
   });
 
   formatBlockButton?.addEventListener('click', async () => {
+    const driveLetter = getTargetDrive();
     try {
-      await wine.getBlockDeviceClient().format();
-      updateBackendStatus('Block device formatted.');
-      appendBackendLog('Block device formatted to zeros.');
+      await wine.getBlockDeviceClient().format({ driveLetter });
+      updateBackendStatus(`Drive ${driveLetter} formatted.`);
+      appendBackendLog(`Drive ${driveLetter} formatted to zeros.`);
     } catch (err) {
       updateBackendStatus(`Format failed: ${err?.message ?? err}`);
       appendBackendLog(`Format error: ${err?.message ?? err}`);
@@ -101,10 +133,11 @@ export function setupWineRuntime() {
 
   createFsButton?.addEventListener('click', async () => {
     const label = filesystemLabelInput?.value?.trim() || 'WineJS';
+    const driveLetter = getTargetDrive();
     try {
-      const meta = await wine.getBlockDeviceClient().createFilesystem({ label });
-      updateBackendStatus(`Filesystem ${meta.label} created.`);
-      appendBackendLog(`Filesystem ${meta.label} created at ${meta.createdAt}.`);
+      const meta = await wine.getBlockDeviceClient().createFilesystem({ label, driveLetter });
+      updateBackendStatus(`Filesystem ${meta.label} created on ${meta.driveLetter ?? driveLetter}.`);
+      appendBackendLog(`Filesystem ${meta.label} created on ${meta.driveLetter ?? driveLetter} at ${meta.createdAt}.`);
     } catch (err) {
       updateBackendStatus(`Filesystem creation failed: ${err?.message ?? err}`);
       appendBackendLog(`Filesystem error: ${err?.message ?? err}`);

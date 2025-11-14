@@ -9,6 +9,7 @@ import {
   Alert,
   Typography,
   Box,
+  MenuItem,
 } from '@mui/material';
 import { alpha } from '@mui/material/styles';
 import LanIcon from '@mui/icons-material/Lan';
@@ -23,6 +24,11 @@ function BackendBridgeCard({
   onBlockSizeChange,
   blockCount,
   onBlockCountChange,
+  driveCount,
+  onDriveCountChange,
+  driveLetters,
+  selectedDrive,
+  onSelectedDriveChange,
   filesystemLabel,
   onFilesystemLabelChange,
   onConnect,
@@ -49,7 +55,7 @@ function BackendBridgeCard({
         <Stack spacing={2}>
           <TextField label="Backend WebSocket URL" value={backendUrl} onChange={onBackendUrlChange} size="small" fullWidth />
           <Grid container spacing={1.5}>
-            <Grid item xs={6}>
+            <Grid item xs={12} sm={4}>
               <TextField
                 label="Block size (bytes)"
                 type="number"
@@ -59,7 +65,7 @@ function BackendBridgeCard({
                 fullWidth
               />
             </Grid>
-            <Grid item xs={6}>
+            <Grid item xs={12} sm={4}>
               <TextField
                 label="Block count"
                 type="number"
@@ -69,7 +75,35 @@ function BackendBridgeCard({
                 fullWidth
               />
             </Grid>
+            <Grid item xs={12} sm={4}>
+              <TextField
+                label="Drive count"
+                type="number"
+                size="small"
+                value={driveCount}
+                onChange={onDriveCountChange}
+                fullWidth
+                inputProps={{ min: 1, max: 26 }}
+              />
+            </Grid>
           </Grid>
+          <TextField
+            select
+            label="Target drive"
+            size="small"
+            value={selectedDrive}
+            onChange={onSelectedDriveChange}
+            fullWidth
+          >
+            {(driveLetters?.length ? driveLetters : ['C']).map((drive) => (
+              <MenuItem key={drive} value={drive}>
+                {drive}
+              </MenuItem>
+            ))}
+          </TextField>
+          <Typography variant="caption" color="text.secondary">
+            Drive letters: {(driveLetters?.length ? driveLetters : ['C']).join(', ')}
+          </Typography>
           <TextField
             label="Filesystem label"
             value={filesystemLabel}
@@ -87,7 +121,7 @@ function BackendBridgeCard({
           </Stack>
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
             <Button variant="outlined" color="inherit" startIcon={<CleaningServicesIcon />} onClick={onFormat}>
-              Format device
+              Format drive
             </Button>
             <Button variant="outlined" color="inherit" startIcon={<SettingsInputComponentIcon />} onClick={onCreateFilesystem}>
               Create filesystem
