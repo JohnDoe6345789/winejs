@@ -1,7 +1,15 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import runtime from '../index.js';
 
 const { WineJS } = runtime;
+
+const HELLO_WORLD_FIXTURE = JSON.parse(
+  readFileSync(path.join(process.cwd(), 'tests/fixtures/helloWorld.json'), 'utf8'),
+);
+const HELLO_WORLD_BASE64 = HELLO_WORLD_FIXTURE.helloWorldExe;
+const HELLO_WORLD_BYTES = new Uint8Array(Buffer.from(HELLO_WORLD_BASE64, 'base64'));
 
 function encodeUtf16le(value) {
   const buffer = new Uint8Array((value.length + 1) * 2);
@@ -163,5 +171,48 @@ describe('WineJS', () => {
     const result = wine.simulateBinary(new Uint8Array([0]));
     expect(result.consoleLines).toEqual([payload]);
     expect(result.guiIntent).toBe(false);
+  });
+
+  it('simulates the base64 encoded HelloWorld.exe payload and surfaces stdout', () => {
+    const { wine } = createWine();
+    let capturedBuffer;
+    const stdout = 'Hello World!';
+    const payloadBytes = new TextEncoder().encode(`${stdout}\u0000`);
+    const base = 0x5000n;
+    const fakeCpu = {
+      readRegister: vi.fn((reg) => {
+        if (reg === 'rdx') return base;
+        if (reg === 'r8') return BigInt(stdout.length);
+        return 0n;
+      }),
+      memory: {
+        readByte: vi.fn((address) => {
+          const offset = Number(address - base);
+          return payloadBytes[offset] ?? 0;
+        }),
+      },
+    };
+    window.WineX86 = {
+      X86Simulator: class {
+        constructor(buffer) {
+          capturedBuffer = buffer;
+        }
+        run({ hooks }) {
+          hooks.handleImport('kernel32.dll!WriteConsoleA', fakeCpu, {});
+          return { imports: [{ dll: 'kernel32.dll', name: 'WriteConsoleA' }] };
+        }
+      },
+    };
+    const result = wine.simulateBase64Executable(HELLO_WORLD_BASE64);
+    expect(Array.from(capturedBuffer)).toEqual(Array.from(HELLO_WORLD_BYTES));
+    expect(result.consoleLines).toEqual([stdout]);
+    expect(result.guiIntent).toBe(false);
+    expect(result.importTrace).toEqual([{ dll: 'kernel32.dll', name: 'WriteConsoleA' }]);
+  });
+
+  it('returns an error for invalid base64 payloads', () => {
+    const { wine } = createWine();
+    const result = wine.simulateBase64Executable('@@@not base64!!!');
+    expect(result.error).toMatch(/base64/i);
   });
 });
