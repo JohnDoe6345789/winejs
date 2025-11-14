@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>WineJS Unified Demo</title>
+  <link rel="stylesheet" href="index.css">
+</head>
+<body>
+  <main class="app">
+    <header class="app__header">
+      <div>
+        <h1>WineJS Unified Demo</h1>
+        <p class="tagline">Blend the printable console strings with the faux GUI canvas to inspect your Win32 binaries in one place.</p>
+      </div>
+      <label class="fileInput">
+        <span>Select a Windows executable</span>
+        <input type="file" id="exeFile" accept=".exe">
+      </label>
+    </header>
+
+    <div id="statusBar" class="status" role="status" aria-live="polite">
+      Load a `.exe` to extract strings or paint a mock window.
+    </div>
+
+    <section class="panelGrid">
+      <article class="panel">
+        <div class="panel__title">Console Output</div>
+        <div id="consoleOutput" class="panel__body terminal" role="log" aria-live="polite"></div>
+      </article>
+
+      <article class="panel">
+        <div class="panel__title">Extracted Strings</div>
+        <div id="stringList" class="panel__body stringList"></div>
+      </article>
+
+      <article class="panel panel--wide">
+        <div class="panel__title">GUI Canvas Sandbox</div>
+        <div id="canvasContainer" class="panel__body canvasContainer"></div>
+      </article>
+    </section>
+  </main>
+
+  <script src="index.js"></script>
+</body>
+</html>

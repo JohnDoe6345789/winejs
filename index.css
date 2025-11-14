@@ -1,0 +1,159 @@
+:root {
+  color-scheme: dark;
+  font-size: 16px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  background: radial-gradient(circle at 20% 20%, #1b1b2f, #0f0f10 70%);
+  color: #f5f5f5;
+  min-height: 100vh;
+}
+
+.app {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 32px 24px 80px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.app__header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.tagline {
+  margin: 8px 0 0;
+  color: #c6c6d4;
+  font-size: 0.95rem;
+}
+
+.fileInput {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  font-weight: 600;
+  padding: 12px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  transition: background 0.2s ease, border 0.2s ease;
+}
+
+.fileInput:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+.fileInput input {
+  display: none;
+}
+
+.status {
+  padding: 10px 16px;
+  background: rgba(0, 0, 0, 0.3);
+  border-left: 4px solid #4fc3f7;
+  border-radius: 4px;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+}
+
+.panelGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.panel {
+  background: rgba(20, 20, 30, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  min-height: 220px;
+}
+
+.panel--wide {
+  grid-column: 1 / -1;
+}
+
+.panel__title {
+  padding: 12px 16px;
+  font-weight: 700;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  letter-spacing: 0.02em;
+}
+
+.panel__body {
+  padding: 16px;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.terminal,
+.stringList,
+.canvasContainer {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.25);
+  padding: 12px;
+}
+
+.terminal {
+  min-height: 200px;
+  white-space: pre-wrap;
+}
+
+.stringList {
+  min-height: 200px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.9rem;
+}
+
+.stringList__item {
+  background: rgba(255, 255, 255, 0.04);
+  padding: 4px 6px;
+  border-radius: 4px;
+  word-break: break-all;
+}
+
+.stringList__item strong {
+  color: #90caf9;
+  margin-right: 6px;
+}
+
+.canvasContainer {
+  min-height: 320px;
+  position: relative;
+}
+
+.canvasContainer canvas {
+  position: absolute;
+  border: 2px solid #90caf9;
+  background: #111;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
+}
+
+@media (max-width: 720px) {
+  .app {
+    padding: 24px 16px 48px;
+  }
+
+  .panel__body {
+    max-height: 320px;
+  }
+}
