@@ -87,7 +87,7 @@ fi
 mkdir -p "$(dirname "${OUTPUT}")"
 
 DEFAULT_FLAGS=(-municode)
-DEFAULT_LIBS=(-lkernel32 -luser32 -lgdi32 -lshell32 -lole32)
+DEFAULT_LIBS=(-lkernel32 -luser32 -lgdi32 -lshell32 -lole32 -lws2_32)
 TARGET_TRIPLE="x86_64-windows-gnu"
 
 if [[ "${EXT}" == "c" ]]; then
