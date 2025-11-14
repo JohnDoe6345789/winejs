@@ -32,8 +32,10 @@ export class PeFile {
     this.entryRva = reader.readUInt32(optionalOffset + 16);
     this.sizeOfImage = reader.readUInt32(optionalOffset + 56);
 
-    const dirCount = reader.readUInt32(optionalOffset + 92);
-    const dirBase = optionalOffset + 96;
+    const NUMBER_OF_RVA_AND_SIZES_OFFSET = 0x6c;
+    const DATA_DIRECTORY_OFFSET = 0x70;
+    const dirCount = reader.readUInt32(optionalOffset + NUMBER_OF_RVA_AND_SIZES_OFFSET);
+    const dirBase = optionalOffset + DATA_DIRECTORY_OFFSET;
     this.dataDirectories = [];
     for (let i = 0; i < dirCount; i++) {
       const rva = reader.readUInt32(dirBase + i * 8);
