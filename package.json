@@ -1,0 +1,31 @@
+{
+  "name": "winejs",
+  "version": "1.0.0",
+  "description": "WineJS runtime experiments.",
+  "main": "index.js",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "dev": "http-server . -p 4173 -c-1",
+    "cy:open": "cypress open",
+    "cy:run": "cypress run"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JohnDoe6345789/winejs.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/JohnDoe6345789/winejs/issues"
+  },
+  "homepage": "https://github.com/JohnDoe6345789/winejs#readme",
+  "devDependencies": {
+    "cypress": "^15.6.0",
+    "http-server": "^14.1.1",
+    "jsdom": "^27.2.0",
+    "vitest": "^4.0.8"
+  }
+}

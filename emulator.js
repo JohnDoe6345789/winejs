@@ -922,7 +922,15 @@ class X86Simulator {
   }
 }
 
-window.WineX86 = {
+const WineX86 = {
   PeFile,
   X86Simulator,
 };
+
+if (typeof window !== 'undefined') {
+  window.WineX86 = WineX86;
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = WineX86;
+}

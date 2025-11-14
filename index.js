@@ -285,27 +285,59 @@ class WineJS {
 }
 
 // --- Wiring ---------------------------------------------------------------
-const consoleEl = document.getElementById('consoleOutput');
-const stringEl = document.getElementById('stringList');
-const canvasEl = document.getElementById('canvasContainer');
-const statusEl = document.getElementById('statusBar');
-const wine = new WineJS({ consoleEl, stringEl, canvasEl, statusEl });
+function setupWineRuntime() {
+  if (typeof document === 'undefined') return null;
+  const consoleEl = document.getElementById('consoleOutput');
+  const stringEl = document.getElementById('stringList');
+  const canvasEl = document.getElementById('canvasContainer');
+  const statusEl = document.getElementById('statusBar');
+  const input = document.getElementById('exeFile');
+  if (!consoleEl || !stringEl || !canvasEl || !statusEl || !input) return null;
 
-wine.registerAPI('WriteConsole', (text) => {
-  text.split(/\r?\n/).forEach((line) => {
-    if (line.trim()) wine.log(`[WineJS] ${line.trim()}`);
+  const wine = new WineJS({ consoleEl, stringEl, canvasEl, statusEl });
+
+  wine.registerAPI('WriteConsole', (text) => {
+    text.split(/\r?\n/).forEach((line) => {
+      if (line.trim()) wine.log(`[WineJS] ${line.trim()}`);
+    });
   });
-});
 
-const input = document.getElementById('exeFile');
-input.addEventListener('change', async (event) => {
-  const file = event.target.files?.[0];
-  if (!file) return;
-  wine.setStatus(`Loading ${file.name} (${(file.size / 1024).toFixed(1)} KB)…`);
-  try {
-    await wine.loadBinary(file);
-    wine.run(file);
-  } catch (err) {
-    wine.setStatus(`Failed to load ${file.name}. ${err?.message ?? err}`);
+  input.addEventListener('change', async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    wine.setStatus(`Loading ${file.name} (${(file.size / 1024).toFixed(1)} KB)…`);
+    try {
+      await wine.loadBinary(file);
+      wine.run(file);
+    } catch (err) {
+      wine.setStatus(`Failed to load ${file.name}. ${err?.message ?? err}`);
+    }
+  });
+
+  return wine;
+}
+
+function bootWineRuntime() {
+  if (typeof document === 'undefined') return;
+  if (document.readyState === 'loading') {
+    document.addEventListener(
+      'DOMContentLoaded',
+      () => {
+        setupWineRuntime();
+      },
+      { once: true },
+    );
+  } else {
+    setupWineRuntime();
   }
-});
+}
+
+bootWineRuntime();
+
+if (typeof window !== 'undefined') {
+  window.WineJS = WineJS;
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { WineJS, setupWineRuntime };
+}
