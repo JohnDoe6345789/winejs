@@ -1,0 +1,22 @@
+body {
+  font-family: monospace;
+}
+
+#consoleOutput {
+  border: 1px solid #333;
+  padding: 5px;
+  height: 100px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  margin-bottom: 10px;
+}
+
+#canvasContainer {
+  position: relative;
+  border: 1px solid #333;
+  height: 400px;
+}
+
+canvas {
+  position: absolute;
+}
