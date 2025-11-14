@@ -1,5 +1,6 @@
 import { WineJS } from './wine-js.js';
 import { createConsoleAPIPlugin } from './plugins/console-api-plugin.js';
+import { createDirectXWebGLPlugin } from './plugins/directx-webgl-plugin.js';
 
 export function setupWineRuntime() {
   if (typeof document === 'undefined') return null;
@@ -15,7 +16,7 @@ export function setupWineRuntime() {
     stringEl,
     canvasEl,
     statusEl,
-    plugins: [createConsoleAPIPlugin()],
+    plugins: [createConsoleAPIPlugin(), createDirectXWebGLPlugin()],
   });
 
   input.addEventListener('change', async (event) => {

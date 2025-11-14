@@ -148,6 +148,11 @@ body {
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
 }
 
+.canvasContainer canvas[data-directx-bridge='webgl'] {
+  border-color: #ffb74d;
+  box-shadow: 0 0 24px rgba(255, 183, 77, 0.7);
+}
+
 @media (max-width: 720px) {
   .app {
     padding: 24px 16px 48px;

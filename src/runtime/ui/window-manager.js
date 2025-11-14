@@ -24,8 +24,14 @@ export class WindowManager {
     canvas.style.left = `${x}px`;
     canvas.style.top = `${y}px`;
     this.canvasEl.appendChild(canvas);
-    const ctx = canvas.getContext('2d');
-    this.windows.set(hwnd, { canvas, ctx, width, height, title });
+    this.windows.set(hwnd, {
+      canvas,
+      ctx: null,
+      width,
+      height,
+      title,
+      skipDefaultPaint: false,
+    });
     return hwnd;
   }
 
@@ -42,7 +48,10 @@ export class WindowManager {
     while (this.messageQueue.length) {
       const { hwnd, msg } = this.messageQueue.shift();
       const win = this.windows.get(hwnd);
-      if (!win || msg !== 'WM_PAINT') continue;
+      if (!win || msg !== 'WM_PAINT' || win.skipDefaultPaint) continue;
+      if (!win.ctx) {
+        win.ctx = win.canvas.getContext('2d');
+      }
       const ctx = win.ctx;
       if (!ctx) continue;
       ctx.fillStyle = '#f5f5f5';
@@ -57,5 +66,15 @@ export class WindowManager {
       ctx.fillStyle = '#222';
       ctx.fillText('WM_PAINT dispatched by WineJS shim', 12, 56);
     }
+  }
+
+  getWindow(hwnd) {
+    return this.windows.get(hwnd) ?? null;
+  }
+
+  markAsExternallyRendered(hwnd) {
+    const win = this.windows.get(hwnd);
+    if (!win) return;
+    win.skipDefaultPaint = true;
   }
 }

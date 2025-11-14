@@ -2,6 +2,10 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import runtime from '../index.js';
+import {
+  createDirectXWebGLPlugin,
+  detectDirectXImports,
+} from '../src/runtime/plugins/directx-webgl-plugin.js';
 
 const { WineJS } = runtime;
 
@@ -214,5 +218,56 @@ describe('WineJS', () => {
     const { wine } = createWine();
     const result = wine.simulateBase64Executable('@@@not base64!!!');
     expect(result.error).toMatch(/base64/i);
+  });
+
+  describe('DirectX WebGL plugin', () => {
+    it('detects DirectX imports from traces', () => {
+      expect(detectDirectXImports([{ dll: 'd3d11.dll' }])).toBe(true);
+      expect(
+        detectDirectXImports([
+          { dll: 'kernel32.dll', name: 'WriteConsoleA' },
+          { name: 'RandomFunction' },
+        ]),
+      ).toBe(false);
+    });
+
+    it('pipes DirectX GUI intent into the WebGL renderer', () => {
+      const renderSpy = vi.fn();
+      const factorySpy = vi.fn(() => ({ render: renderSpy }));
+      const plugin = createDirectXWebGLPlugin({
+        detectDirectX: () => true,
+        rendererFactory: factorySpy,
+      });
+      const { wine } = createWine({ plugins: [plugin] });
+      const hwnd = wine.CreateWindowEx(12, 8, 160, 140, 'DX Window');
+      const simulation = {
+        importTrace: [{ dll: 'd3d11.dll', name: 'D3D11CreateDevice' }],
+      };
+      wine.runHook('onGuiIntent', { hwnd, simulation });
+      expect(factorySpy).toHaveBeenCalledWith({
+        canvas: expect.any(HTMLCanvasElement),
+        hwnd,
+        wine,
+      });
+      expect(renderSpy).toHaveBeenCalledWith({ importTrace: simulation.importTrace });
+      const win = wine.windowManager.getWindow(hwnd);
+      expect(win.skipDefaultPaint).toBe(true);
+      expect(win.canvas.dataset.directxBridge).toBe('webgl');
+    });
+
+    it('logs when DirectX imports are detected post-sim', () => {
+      const plugin = createDirectXWebGLPlugin({
+        detectDirectX: () => true,
+        rendererFactory: () => null,
+      });
+      const { wine } = createWine({ plugins: [plugin] });
+      wine.log = vi.fn();
+      wine.runHook('onAfterSimulate', {
+        simulation: { importTrace: [{ dll: 'd3dcompiler_47.dll' }] },
+      });
+      expect(wine.log).toHaveBeenCalledWith(
+        expect.stringContaining('DirectX imports detected'),
+      );
+    });
   });
 });
