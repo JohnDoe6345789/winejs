@@ -28,12 +28,12 @@ WineJS is a playground for exploring how much of the Win32 execution model can b
 
 The frontend can now talk to a lightweight Node.js backend that exposes both a block device abstraction and a Winsock-over-WebSocket tunnel so the x86 shim can persist storage and proxy socket traffic outside of the browser sandbox.
 
-1. Start the backend inside this repo:
+1. Start the dev environment inside this repo so the Vite frontend and backend boot together:
    ```bash
-   npm run backend
+   npm run dev
    ```
-   By default it listens on `ws://localhost:8089`, keeps the block image at `build/winejs-block-device.bin`, and will grow/shrink the image when you change the block size/count from the UI.
-2. Open `index.html`, scroll to the **Backend & Storage Controls** panel, set the WebSocket URL if you used a non-default port, and click **Connect**.
+   When you stop the command both processes shut down. By default the backend still listens on `ws://localhost:8089`, keeps the block image at `build/winejs-block-device.bin`, and will grow/shrink the image when you change the block size/count from the UI. If you only need the backend, `npm run backend` continues to launch it by itself.
+2. Open the Vite dev server (`http://localhost:5173`) or `index.html`, scroll to the **Backend & Storage Controls** panel, set the WebSocket URL if you used a non-default port, and click **Connect**.
 3. Use the slider inputs to pick the block size and block count, then click **Format Block Device** or **Create Filesystem** to zero the image and stamp metadata. These commands are routed to the backend in real time and the activity log in the UI will confirm each operation.
 4. When WineJS intercepts Winsock imports (`WSAStartup`, `connect`, `send`, `recv`, etc.) the data now rides over the same backend channel. The backend opens a matching TCP socket and streams responses back to the emulator, and the frontend log will show connection/data/close events so you can trace the traffic.
 
