@@ -1,31 +1,34 @@
-export function createImportHandler({ readAnsiString, readWideString, log }) {
+function normalizeResult(result) {
+  if (result == null) return undefined;
+  if (typeof result === 'number') return { rax: result };
+  if (typeof result === 'object') {
+    return {
+      rax: result.rax ?? 0,
+    };
+  }
+  return undefined;
+}
+
+export function createImportHandler({ readAnsiString, readWideString, log, plugins = [] }) {
   return function handleImportCall({ name, cpu, consoleLines, flagGui }) {
-    const lower = name.toLowerCase();
-    if (lower.includes('user32.dll')) flagGui?.();
-    if (lower.endsWith('writeconsolew')) {
-      const pointer = cpu.readRegister('rdx');
-      const charCount = Number(cpu.readRegister('r8') & 0xffffffffn) || undefined;
-      const text = readWideString(cpu, pointer, charCount);
-      if (text) consoleLines.push(text);
-      return { rax: 1 };
-    }
-    if (lower.endsWith('writeconsolea')) {
-      const pointer = cpu.readRegister('rdx');
-      const byteCount = Number(cpu.readRegister('r8') & 0xffffffffn) || undefined;
-      const text = readAnsiString(cpu, pointer, byteCount);
-      if (text) consoleLines.push(text);
-      return { rax: 1 };
-    }
-    if (lower.includes('messagebox')) {
-      flagGui?.();
-      const textPtr = cpu.readRegister('rdx');
-      const text = readWideString(cpu, textPtr, 256);
-      if (text) log?.(`[WineJS] MessageBox payload: ${text}`);
-      return { rax: 1 };
-    }
-    if (lower.includes('createwindow') || lower.includes('dialogbox') || lower.includes('registerclass')) {
-      flagGui?.();
-      return { rax: 1 };
+    const context = {
+      name,
+      cpu,
+      consoleLines,
+      flagGui,
+      readAnsiString,
+      readWideString,
+      log,
+    };
+    for (const plugin of plugins) {
+      if (!plugin) continue;
+      const shouldRun = plugin.match ? plugin.match(context) : true;
+      if (!shouldRun) continue;
+      const result = plugin.handle?.(context);
+      const normalized = normalizeResult(result);
+      if (normalized) {
+        return normalized;
+      }
     }
     return { rax: 0 };
   };

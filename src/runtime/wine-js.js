@@ -5,14 +5,11 @@ import { readAnsiString, readWideString } from './memory-readers.js';
 import { createImportHandler } from './import-handler.js';
 import { SimulatorBridge } from './simulator/simulator-bridge.js';
 import { decodeBase64Executable } from './base64.js';
-
-function getSimulatorClass() {
-  if (typeof window === 'undefined') return undefined;
-  return window.WineX86?.X86Simulator;
-}
+import { createConsoleOutputImportPlugin } from './import-plugins/console-output-plugin.js';
+import { createX86SimulatorPlugin } from './simulator/plugins/x86-simulator-plugin.js';
 
 export class WineJS {
-  constructor({ consoleEl, stringEl, canvasEl, statusEl }) {
+  constructor({ consoleEl, stringEl, canvasEl, statusEl, plugins = [], importPlugins, simulatorPlugins } = {}) {
     this.consoleEl = consoleEl;
     this.statusEl = statusEl;
     this.apiHooks = {};
@@ -21,6 +18,8 @@ export class WineJS {
     this.windowManager = new WindowManager(canvasEl);
     this.utf8Decoder = new TextDecoder();
     this.utf16Decoder = new TextDecoder('utf-16le');
+    this.plugins = [];
+    this.importPlugins = [];
 
     const importHandler = createImportHandler({
       readAnsiString: (cpu, address, maxLength) =>
@@ -28,13 +27,21 @@ export class WineJS {
       readWideString: (cpu, address, maxChars) =>
         readWideString(cpu, address, this.utf16Decoder, maxChars),
       log: (message) => this.log(message),
+      plugins: this.importPlugins,
     });
 
     this.importHandler = importHandler;
     this.simulatorBridge = new SimulatorBridge({
       importHandler: (params) => this.importHandler(params),
-      getSimulatorClass,
     });
+
+    const defaultImportPlugins = importPlugins ?? [createConsoleOutputImportPlugin()];
+    defaultImportPlugins.forEach((plugin) => this.registerImportPlugin(plugin));
+
+    const defaultSimulatorPlugins = simulatorPlugins ?? [createX86SimulatorPlugin()];
+    defaultSimulatorPlugins.forEach((plugin) => this.registerSimulatorPlugin(plugin));
+
+    plugins.forEach((plugin) => this.registerPlugin(plugin));
   }
 
   log(message) {
@@ -63,6 +70,41 @@ export class WineJS {
     }
   }
 
+  registerPlugin(plugin) {
+    if (!plugin) return;
+    this.plugins.push(plugin);
+    if (typeof plugin.onInit === 'function') {
+      try {
+        plugin.onInit({ wine: this });
+      } catch (err) {
+        this.log(`[WineJS] Plugin onInit failed: ${err?.message ?? err}`);
+      }
+    }
+  }
+
+  runHook(name, payload) {
+    this.plugins.forEach((plugin) => {
+      const hook = plugin?.[name];
+      if (typeof hook !== 'function') return;
+      try {
+        hook({ wine: this, ...payload });
+      } catch (err) {
+        const pluginId = plugin?.id || plugin?.name || 'anonymous plugin';
+        this.log(`[WineJS] Plugin ${pluginId} hook ${name} failed: ${err?.message ?? err}`);
+      }
+    });
+  }
+
+  registerImportPlugin(plugin) {
+    if (!plugin) return;
+    this.importPlugins.push(plugin);
+  }
+
+  registerSimulatorPlugin(plugin) {
+    if (!plugin) return;
+    this.simulatorBridge.registerPlugin(plugin);
+  }
+
   registerAPI(name, fn) {
     this.apiHooks[name.toLowerCase()] = fn;
   }
@@ -80,6 +122,7 @@ export class WineJS {
       reader.onload = () => {
         const buffer = new Uint8Array(reader.result);
         this.modules.set(file.name, buffer);
+        this.runHook('onFileLoaded', { file, buffer });
         resolve(buffer);
       };
       reader.onerror = reject;
@@ -88,27 +131,30 @@ export class WineJS {
   }
 
   extractStrings(buffer) {
-    return extractPrintableStrings(buffer);
+    const strings = extractPrintableStrings(buffer);
+    this.runHook('onStringsExtracted', { buffer, strings });
+    return strings;
   }
 
   displayStrings(strings) {
     this.stringPanel.render(strings);
+    this.runHook('onStringsDisplayed', { strings });
   }
 
   handleImportCall(payload) {
     return this.importHandler(payload);
   }
 
-  simulateBinary(buffer) {
-    return this.simulatorBridge.simulateBinary(buffer);
+  simulateBinary(buffer, options = {}) {
+    return this.simulatorBridge.simulateBinary(buffer, options);
   }
 
   decodeBase64Executable(payload) {
     return decodeBase64Executable(payload);
   }
 
-  simulateBase64Executable(payload) {
-    return this.simulatorBridge.simulateBase64Executable(payload);
+  simulateBase64Executable(payload, options = {}) {
+    return this.simulatorBridge.simulateBase64Executable(payload, options);
   }
 
   readAnsiString(cpu, address, maxLength = 256) {
@@ -145,7 +191,9 @@ export class WineJS {
     this.clearConsole();
     this.clearWindows();
 
-    const simulation = this.simulateBinary(buffer);
+    this.runHook('onBeforeSimulate', { file, buffer });
+    const simulation = this.simulateBinary(buffer, { file });
+    this.runHook('onAfterSimulate', { file, buffer, simulation });
     const printableStrings = this.extractStrings(buffer).filter((s) => s.trim());
     const statusChunks = [`${file.name}`, `${(file.size / 1024).toFixed(1)} KB`];
     if (simulation.error) {
@@ -153,6 +201,7 @@ export class WineJS {
       this.setStatus(statusChunks.join(' — '));
       this.displayStrings(printableStrings);
       this.log(`[WineJS] x86 simulation failed: ${simulation.error}`);
+      this.runHook('onSimulationError', { file, buffer, error: simulation.error });
       return;
     }
     statusChunks.push(`imports walked: ${simulation.importTrace.length}`);
@@ -164,13 +213,17 @@ export class WineJS {
       this.log('[WineJS] GUI intent detected from simulated API calls.');
       const hwnd = this.CreateWindowEx(20, 20, 420, 300, file.name);
       this.ShowWindow(hwnd);
+      this.runHook('onGuiIntent', { file, simulation, hwnd });
     }
     if (simulation.consoleLines.length) {
       simulation.consoleLines.forEach((line) => {
-        if (line.trim()) this.callAPI('WriteConsole', line);
+        if (!line.trim()) return;
+        this.runHook('onConsoleLine', { file, line, simulation });
+        this.callAPI('WriteConsole', line);
       });
     } else if (!simulation.guiIntent) {
       this.log('[WineJS] Simulation completed with no console output detected.');
+      this.runHook('onSilentConsole', { file, simulation });
     }
   }
 }

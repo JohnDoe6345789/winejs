@@ -1,4 +1,5 @@
 import { WineJS } from './wine-js.js';
+import { createConsoleAPIPlugin } from './plugins/console-api-plugin.js';
 
 export function setupWineRuntime() {
   if (typeof document === 'undefined') return null;
@@ -9,12 +10,12 @@ export function setupWineRuntime() {
   const input = document.getElementById('exeFile');
   if (!consoleEl || !stringEl || !canvasEl || !statusEl || !input) return null;
 
-  const wine = new WineJS({ consoleEl, stringEl, canvasEl, statusEl });
-
-  wine.registerAPI('WriteConsole', (text) => {
-    text.split(/\r?\n/).forEach((line) => {
-      if (line.trim()) wine.log(`[WineJS] ${line.trim()}`);
-    });
+  const wine = new WineJS({
+    consoleEl,
+    stringEl,
+    canvasEl,
+    statusEl,
+    plugins: [createConsoleAPIPlugin()],
   });
 
   input.addEventListener('change', async (event) => {

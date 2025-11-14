@@ -1,24 +1,35 @@
 import { decodeBase64Executable } from '../base64.js';
 
 export class SimulatorBridge {
-  constructor({ importHandler, getSimulatorClass }) {
+  constructor({ importHandler }) {
     this.importHandler = importHandler;
-    this.getSimulatorClass = getSimulatorClass;
+    this.plugins = [];
   }
 
-  createSimulator(buffer) {
-    const Simulator = this.getSimulatorClass?.();
-    if (!Simulator) {
-      return null;
-    }
-    return new Simulator(buffer);
+  registerPlugin(plugin) {
+    if (!plugin) return;
+    this.plugins.push(plugin);
   }
 
-  simulateBinary(buffer) {
-    const simulator = this.createSimulator(buffer);
-    if (!simulator) {
-      return { error: 'x86-64 simulator not wired into page.' };
+  createSimulator(buffer, options = {}) {
+    for (const plugin of this.plugins) {
+      if (!plugin) continue;
+      const shouldUse = plugin.match ? plugin.match({ buffer, options }) : true;
+      if (!shouldUse) continue;
+      const simulator = plugin.createSimulator?.({ buffer, options });
+      if (simulator) {
+        return { simulator, plugin };
+      }
     }
+    return null;
+  }
+
+  simulateBinary(buffer, options = {}) {
+    const created = this.createSimulator(buffer, options);
+    if (!created) {
+      return { error: this.describeMissingSimulator() };
+    }
+    const { simulator } = created;
     try {
       const consoleLines = [];
       let guiIntent = false;
@@ -47,12 +58,23 @@ export class SimulatorBridge {
     }
   }
 
-  simulateBase64Executable(payload) {
+  simulateBase64Executable(payload, options = {}) {
     try {
       const buffer = decodeBase64Executable(payload);
-      return this.simulateBinary(buffer);
+      return this.simulateBinary(buffer, options);
     } catch (err) {
       return { error: err?.message ?? 'Invalid base64 executable payload.' };
     }
+  }
+
+  describeMissingSimulator() {
+    const hasX86Plugin = this.plugins.some((plugin) => plugin?.id === 'x86-simulator');
+    if (hasX86Plugin) {
+      return 'x86-64 simulator not wired into page.';
+    }
+    if (this.plugins.length) {
+      return 'No simulator plugin available for this binary.';
+    }
+    return 'No simulator plugins registered.';
   }
 }
