@@ -10,6 +10,8 @@ class WineJS {
     this.windows = new Map();
     this.messageQueue = [];
     this.nextHwnd = 1;
+    this.utf8Decoder = new TextDecoder();
+    this.utf16Decoder = new TextDecoder('utf-16le');
   }
 
   // --- UI helpers ---------------------------------------------------------
@@ -105,17 +107,95 @@ class WineJS {
     }
   }
 
-  detectGuiIntent(strings) {
-    const guiHints = ['CreateWindow', 'DialogBox', 'WinMain', 'RegisterClass', 'WM_', 'MessageBox'];
-    return strings.some((s) => guiHints.some((hint) => s.includes(hint)));
+  simulateBinary(buffer) {
+    if (!window.WineX86?.X86Simulator) {
+      return { error: 'x86-64 simulator not wired into page.' };
+    }
+    try {
+      const simulator = new window.WineX86.X86Simulator(buffer);
+      const consoleLines = [];
+      let guiIntent = false;
+      const hooks = {
+        handleImport: (name, cpu, context) =>
+          this.handleImportCall({
+            name,
+            cpu,
+            consoleLines,
+            flagGui: () => {
+              guiIntent = true;
+            },
+          }),
+      };
+      const result = simulator.run({ hooks });
+      if (!guiIntent) {
+        guiIntent = result.imports.some((imp) => imp.dll.includes('user32'));
+      }
+      return {
+        consoleLines,
+        guiIntent,
+        importTrace: result.imports,
+      };
+    } catch (err) {
+      return { error: err?.message ?? String(err) };
+    }
   }
 
-  analyzeBinary({ file, buffer }) {
-    const strings = this.extractStrings(buffer);
-    const isLikelyGui = this.detectGuiIntent(strings);
-    const printableLines = strings.filter((s) => s.trim());
-    const status = `${file.name} — ${(file.size / 1024).toFixed(1)} KB — ${printableLines.length} printable chunks detected (${isLikelyGui ? 'GUI' : 'CLI'} heuristic).`;
-    return { strings: printableLines, isLikelyGui, status };
+  handleImportCall({ name, cpu, consoleLines, flagGui }) {
+    const lower = name.toLowerCase();
+    if (lower.includes('user32.dll')) flagGui();
+    if (lower.endsWith('writeconsolew')) {
+      const pointer = cpu.readRegister('rdx');
+      const charCount = Number(cpu.readRegister('r8') & 0xffffffffn) || undefined;
+      const text = this.readWideString(cpu, pointer, charCount);
+      if (text) consoleLines.push(text);
+      return { rax: 1 };
+    }
+    if (lower.endsWith('writeconsolea')) {
+      const pointer = cpu.readRegister('rdx');
+      const byteCount = Number(cpu.readRegister('r8') & 0xffffffffn) || undefined;
+      const text = this.readAnsiString(cpu, pointer, byteCount);
+      if (text) consoleLines.push(text);
+      return { rax: 1 };
+    }
+    if (lower.includes('messagebox')) {
+      flagGui();
+      const textPtr = cpu.readRegister('rdx');
+      const text = this.readWideString(cpu, textPtr, 256);
+      if (text) this.log(`[WineJS] MessageBox payload: ${text}`);
+      return { rax: 1 };
+    }
+    if (lower.includes('createwindow') || lower.includes('dialogbox') || lower.includes('registerclass')) {
+      flagGui();
+      return { rax: 1 };
+    }
+    return { rax: 0 };
+  }
+
+  readAnsiString(cpu, address, maxLength = 256) {
+    if (!address) return '';
+    const bytes = [];
+    const limit = Math.min(maxLength ?? 256, 4096);
+    for (let i = 0; i < limit; i++) {
+      const value = cpu.memory.readByte(address + BigInt(i));
+      if (value === 0) break;
+      bytes.push(value);
+    }
+    if (!bytes.length) return '';
+    return this.utf8Decoder.decode(new Uint8Array(bytes));
+  }
+
+  readWideString(cpu, address, maxChars = 256) {
+    if (!address) return '';
+    const bytes = [];
+    const limit = Math.min(maxChars ?? 256, 2048);
+    for (let i = 0; i < limit; i++) {
+      const lo = cpu.memory.readByte(address + BigInt(i * 2));
+      const hi = cpu.memory.readByte(address + BigInt(i * 2 + 1));
+      if (lo === 0 && hi === 0) break;
+      bytes.push(lo, hi);
+    }
+    if (!bytes.length) return '';
+    return this.utf16Decoder.decode(new Uint8Array(bytes));
   }
 
   // --- Fake windowing -----------------------------------------------------
@@ -174,17 +254,32 @@ class WineJS {
     this.clearConsole();
     this.clearWindows();
 
-    const { strings, isLikelyGui, status } = this.analyzeBinary({ file, buffer });
-    this.setStatus(status);
-    this.displayStrings(strings);
+    const simulation = this.simulateBinary(buffer);
+    const printableStrings = this.extractStrings(buffer).filter((s) => s.trim());
+    const statusChunks = [`${file.name}`, `${(file.size / 1024).toFixed(1)} KB`];
+    if (simulation.error) {
+      statusChunks.push(`simulation failed: ${simulation.error}`);
+      this.setStatus(statusChunks.join(' — '));
+      this.displayStrings(printableStrings);
+      this.log(`[WineJS] x86 simulation failed: ${simulation.error}`);
+      return;
+    }
+    statusChunks.push(`imports walked: ${simulation.importTrace.length}`);
+    statusChunks.push(simulation.guiIntent ? 'GUI intent via API usage' : 'Console intent via API usage');
+    this.setStatus(statusChunks.join(' — '));
+    this.displayStrings(printableStrings);
 
-    if (isLikelyGui) {
-      this.log('[WineJS] GUI intent detected; painting faux window.');
+    if (simulation.guiIntent) {
+      this.log('[WineJS] GUI intent detected from simulated API calls.');
       const hwnd = this.CreateWindowEx(20, 20, 420, 300, file.name);
       this.ShowWindow(hwnd);
-    } else {
-      this.log('[WineJS] Treating binary as console-oriented.');
-      strings.forEach((line) => this.callAPI('WriteConsole', line));
+    }
+    if (simulation.consoleLines.length) {
+      simulation.consoleLines.forEach((line) => {
+        if (line.trim()) this.callAPI('WriteConsole', line);
+      });
+    } else if (!simulation.guiIntent) {
+      this.log('[WineJS] Simulation completed with no console output detected.');
     }
   }
 }
