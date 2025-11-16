@@ -348,6 +348,38 @@ export class X86Decoder {
         }
         break;
       }
+      case 0x0faf:
+        return new X86Instruction({
+          mnemonic: 'imul',
+          operands: [
+            this.resolveOperand(opInfo, true, state.rex.w ? 64 : 32),
+            this.resolveOperand(opInfo, false, state.rex.w ? 64 : 32),
+          ],
+        });
+      case 0x69: {
+        const operandSize = state.rex.w ? 64 : 32;
+        const immBytes = operandSize === 16 ? 2 : 4;
+        const imm = this.readImm(state, immBytes, true);
+        return new X86Instruction({
+          mnemonic: 'imul',
+          operands: [
+            this.resolveOperand(opInfo, true, state.rex.w ? 64 : 32),
+            this.resolveOperand(opInfo, false, state.rex.w ? 64 : 32),
+            new Operand('imm', { value: imm, size: immBytes * 8 }),
+          ],
+        });
+      }
+      case 0x6b: {
+        const imm = this.readImm(state, 1, true);
+        return new X86Instruction({
+          mnemonic: 'imul',
+          operands: [
+            this.resolveOperand(opInfo, true, state.rex.w ? 64 : 32),
+            this.resolveOperand(opInfo, false, state.rex.w ? 64 : 32),
+            new Operand('imm', { value: imm, size: 8 }),
+          ],
+        });
+      }
       case 0xc7: {
         const imm = this.readImm(state, 4, false);
         return new X86Instruction({
@@ -365,6 +397,40 @@ export class X86Decoder {
           operands: [
             this.resolveOperand(opInfo, false, 8),
             new Operand('imm', { value: BigInt(imm), size: 8 }),
+          ],
+        });
+      }
+      case 0xc1: {
+        const mnemonic = this.shiftMnemonic(opInfo.reg & 0x7);
+        if (!mnemonic) break;
+        const imm = this.readImm(state, 1, false);
+        return new X86Instruction({
+          mnemonic,
+          operands: [
+            this.resolveOperand(opInfo, false, state.rex.w ? 64 : 32),
+            new Operand('imm', { value: BigInt(imm), size: 8 }),
+          ],
+        });
+      }
+      case 0xd1: {
+        const mnemonic = this.shiftMnemonic(opInfo.reg & 0x7);
+        if (!mnemonic) break;
+        return new X86Instruction({
+          mnemonic,
+          operands: [
+            this.resolveOperand(opInfo, false, state.rex.w ? 64 : 32),
+            new Operand('imm', { value: 1n, size: 8 }),
+          ],
+        });
+      }
+      case 0xd3: {
+        const mnemonic = this.shiftMnemonic(opInfo.reg & 0x7);
+        if (!mnemonic) break;
+        return new X86Instruction({
+          mnemonic,
+          operands: [
+            this.resolveOperand(opInfo, false, state.rex.w ? 64 : 32),
+            new Operand('reg', { name: 'cl', size: 8 }),
           ],
         });
       }
@@ -430,5 +496,18 @@ export class X86Decoder {
         return null;
     }
     return null;
+  }
+
+  shiftMnemonic(subCode) {
+    switch (subCode) {
+      case 4:
+        return 'shl';
+      case 5:
+        return 'shr';
+      case 7:
+        return 'sar';
+      default:
+        return null;
+    }
   }
 }
