@@ -260,6 +260,38 @@ export class X86Decoder {
             this.resolveOperand(opInfo, false, 64),
           ],
         });
+      case 0x21:
+        return new X86Instruction({
+          mnemonic: 'and',
+          operands: [
+            this.resolveOperand(opInfo, false, state.rex.w ? 64 : 32),
+            this.resolveOperand(opInfo, true, state.rex.w ? 64 : 32),
+          ],
+        });
+      case 0x23:
+        return new X86Instruction({
+          mnemonic: 'and',
+          operands: [
+            this.resolveOperand(opInfo, true, state.rex.w ? 64 : 32),
+            this.resolveOperand(opInfo, false, state.rex.w ? 64 : 32),
+          ],
+        });
+      case 0x09:
+        return new X86Instruction({
+          mnemonic: 'or',
+          operands: [
+            this.resolveOperand(opInfo, false, state.rex.w ? 64 : 32),
+            this.resolveOperand(opInfo, true, state.rex.w ? 64 : 32),
+          ],
+        });
+      case 0x0b:
+        return new X86Instruction({
+          mnemonic: 'or',
+          operands: [
+            this.resolveOperand(opInfo, true, state.rex.w ? 64 : 32),
+            this.resolveOperand(opInfo, false, state.rex.w ? 64 : 32),
+          ],
+        });
       case 0x31:
         return new X86Instruction({
           mnemonic: 'xor',
@@ -341,7 +373,26 @@ export class X86Decoder {
         const immediateSize = opcode === 0x81 ? 4 : 1;
         const immValue = this.readImm(state, immediateSize, true);
         const subCode = opInfo.reg & 0x7;
-        const mnemonic = subCode === 5 ? 'sub' : subCode === 0 ? 'add' : null;
+        let mnemonic = null;
+        switch (subCode) {
+          case 0:
+            mnemonic = 'add';
+            break;
+          case 1:
+            mnemonic = 'or';
+            break;
+          case 4:
+            mnemonic = 'and';
+            break;
+          case 5:
+            mnemonic = 'sub';
+            break;
+          case 6:
+            mnemonic = 'xor';
+            break;
+          default:
+            mnemonic = null;
+        }
         if (!mnemonic) break;
         return new X86Instruction({
           mnemonic,

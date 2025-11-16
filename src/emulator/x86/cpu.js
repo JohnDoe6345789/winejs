@@ -150,6 +150,26 @@ export class X86CPU {
         this.flags.sf = result < 0n;
         return;
       }
+      case 'and': {
+        const dest = instr.operands[0];
+        const left = this.readOperand(dest);
+        const right = this.readOperand(instr.operands[1]);
+        const result = left & right;
+        this.writeOperand(dest, result);
+        this.flags.zf = result === 0n;
+        this.flags.sf = result < 0n;
+        return;
+      }
+      case 'or': {
+        const dest = instr.operands[0];
+        const left = this.readOperand(dest);
+        const right = this.readOperand(instr.operands[1]);
+        const result = left | right;
+        this.writeOperand(dest, result);
+        this.flags.zf = result === 0n;
+        this.flags.sf = result < 0n;
+        return;
+      }
       case 'add': {
         const dest = instr.operands[0];
         const left = this.readOperand(dest);
